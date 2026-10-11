@@ -251,6 +251,10 @@
     <string name="widget_configure_all_lists_hint">Shows tasks from every note</string>
     <string name="widget_configure_show_completed">Show completed tasks</string>
     <string name="widget_missing_list">List unavailable. Long-press the widget and choose Edit to pick another.</string>
+    <plurals name="widget_configure_task_count">
+        <item quantity="one">%d task</item>
+        <item quantity="other">%d tasks</item>
+    </plurals>
 
     <!-- Add task flow -->
     <string name="add_task_picker_title">Add task</string>

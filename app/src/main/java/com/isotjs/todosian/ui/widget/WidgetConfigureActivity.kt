@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.GlanceAppWidgetManager
@@ -278,7 +279,13 @@ private fun WidgetConfigureScreen(
                         ListItem(
                             headlineContent = { Text(text = category.displayName) },
                             supportingContent = {
-                                Text(text = "${category.todoCount} tasks")
+                                Text(
+                                    text = pluralStringResource(
+                                        R.plurals.widget_configure_task_count,
+                                        category.todoCount,
+                                        category.todoCount,
+                                    ),
+                                )
                             },
                             leadingContent = {
                                 Icon(
