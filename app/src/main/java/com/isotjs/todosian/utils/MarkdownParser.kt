@@ -62,38 +62,13 @@ object MarkdownParser {
             this[lineIndex] = toggledLine(this[lineIndex], enableTasksPlugin, today)
         }
 
-        if (!isDone && enableTasksPlugin) {
-            val parsed = parseRemainder(match.groupValues[3])
-            val rule = parsed.meta.recurrence
-            if (!rule.isNullOrBlank()) {
-                val nextLine = buildRecurredTaskLine(
-                    indentPrefix = match.groupValues[1],
-                    taskText = parsed.mainText,
-                    originalMeta = parsed.meta,
-                    rule = rule,
-                    today = today,
-                )
-                if (nextLine != null) {
-                    return updatedLines.toMutableList().apply {
-                        add(lineIndex, nextLine)
-                    }
-                }
+        if (!isDone) {
+            insertRecurredOccurrenceIfAny(updatedLines, match, lineIndex, enableTasksPlugin, today)?.let {
+                return it
             }
         }
 
         return updatedLines
-    }
-
-    fun tryToggleLine(
-        lines: List<String>,
-        lineIndex: Int,
-        enableTasksPlugin: Boolean,
-        today: LocalDate = LocalDate.now(),
-    ): List<String>? {
-        if (lineIndex !in lines.indices) return null
-        val line = lines[lineIndex]
-        if (!isTodoLine(line)) return null
-        return toggleLine(lines, lineIndex, enableTasksPlugin, today)
     }
 
     /**
@@ -135,22 +110,9 @@ object MarkdownParser {
             }
         }
 
-        if (!isDone && enableTasksPlugin) {
-            val parsed = parseRemainder(match.groupValues[3])
-            val rule = parsed.meta.recurrence
-            if (!rule.isNullOrBlank()) {
-                val nextLine = buildRecurredTaskLine(
-                    indentPrefix = match.groupValues[1],
-                    taskText = parsed.mainText,
-                    originalMeta = parsed.meta,
-                    rule = rule,
-                    today = today,
-                )
-                if (nextLine != null) {
-                    return updatedLines.toMutableList().apply {
-                        add(lineIndex, nextLine)
-                    }
-                }
+        if (!isDone) {
+            insertRecurredOccurrenceIfAny(updatedLines, match, lineIndex, enableTasksPlugin, today)?.let {
+                return it
             }
         }
 
@@ -487,6 +449,37 @@ object MarkdownParser {
         }
 
         return "$indentPrefix- [x] ${newRemainder.trimEnd()}"
+    }
+
+    /**
+     * When the tasks plugin is enabled and the toggled todo has a recurrence rule, inserts a new
+     * occurrence of that todo at [lineIndex] (above the already-toggled todo and its sub-todos).
+     * Returns the updated lines, or null when no occurrence should be inserted.
+     */
+    private fun insertRecurredOccurrenceIfAny(
+        updatedLines: MutableList<String>,
+        match: MatchResult,
+        lineIndex: Int,
+        enableTasksPlugin: Boolean,
+        today: LocalDate,
+    ): List<String>? {
+        if (!enableTasksPlugin) return null
+
+        val parsed = parseRemainder(match.groupValues[3])
+        val rule = parsed.meta.recurrence
+        if (rule.isNullOrBlank()) return null
+
+        val nextLine = buildRecurredTaskLine(
+            indentPrefix = match.groupValues[1],
+            taskText = parsed.mainText,
+            originalMeta = parsed.meta,
+            rule = rule,
+            today = today,
+        ) ?: return null
+
+        return updatedLines.toMutableList().apply {
+            add(lineIndex, nextLine)
+        }
     }
 
     private fun buildRecurredTaskLine(
