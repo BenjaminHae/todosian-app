@@ -140,6 +140,7 @@ fun CategoryScreen(
 
     var sheetMode by remember { mutableStateOf<TodoSheetMode?>(null) }
     var sheetText by remember { mutableStateOf("") }
+    var sheetNotes by remember { mutableStateOf("") }
     var sheetMeta by remember { mutableStateOf(MarkdownParser.TasksMeta()) }
     var sheetParentTodo by remember { mutableStateOf<Todo?>(null) }
     var deleteTodoTarget by remember { mutableStateOf<Todo?>(null) }
@@ -168,6 +169,7 @@ fun CategoryScreen(
             autoOpenedAddTodo = true
             sheetMode = TodoSheetMode.Add
             sheetText = ""
+            sheetNotes = ""
             sheetMeta = if (settings.enableTasksPluginSupport) {
                 MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
             } else {
@@ -181,6 +183,7 @@ fun CategoryScreen(
             onDismissRequest = {
                 sheetMode = null
                 sheetText = ""
+                sheetNotes = ""
                 sheetMeta = MarkdownParser.TasksMeta()
                 sheetParentTodo = null
             },
@@ -247,6 +250,19 @@ fun CategoryScreen(
                             },
                     )
                 }
+                if (sheetMode is TodoSheetMode.Edit) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = sheetNotes,
+                        onValueChange = { sheetNotes = it },
+                        singleLine = false,
+                        minLines = 3,
+                        maxLines = 6,
+                        label = { Text(text = stringResource(R.string.task_notes_label)) },
+                        supportingText = { Text(text = stringResource(R.string.task_notes_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     horizontalArrangement = Arrangement.End,
@@ -258,6 +274,7 @@ fun CategoryScreen(
                                 todoSheetState.hide()
                                 sheetMode = null
                                 sheetText = ""
+                                sheetNotes = ""
                                 sheetMeta = MarkdownParser.TasksMeta()
                                 sheetParentTodo = null
                             }
@@ -280,6 +297,7 @@ fun CategoryScreen(
                                     newText = sheetText,
                                     meta = if (settings.enableTasksPluginSupport) sheetMeta else null,
                                     enableTasksPluginSupport = settings.enableTasksPluginSupport,
+                                    notes = sheetNotes.split("\n"),
                                 )
 
                                 TodoSheetMode.AddSubtask -> {
@@ -300,6 +318,7 @@ fun CategoryScreen(
                                 todoSheetState.hide()
                                 sheetMode = null
                                 sheetText = ""
+                                sheetNotes = ""
                                 sheetMeta = MarkdownParser.TasksMeta()
                                 sheetParentTodo = null
                             }
@@ -483,6 +502,7 @@ fun CategoryScreen(
                 onClick = {
                     sheetMode = TodoSheetMode.Add
                     sheetText = ""
+                    sheetNotes = ""
                     sheetMeta = if (settings.enableTasksPluginSupport) {
                         MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
                     } else {
@@ -585,6 +605,7 @@ fun CategoryScreen(
                                 enableTasksPluginSupport = settings.enableTasksPluginSupport,
                                 useEmojisInUi = settings.tasksPluginUseEmojisInUi,
                                 showSubtaskButton = settings.enableSubtasks,
+                                showNotes = settings.showNotesInTaskList,
                                 hasSubTasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex),
                                 isCollapsed = todo.id in collapsedTodoIds,
                                 onToggleCollapse = { toggleCollapse(todo.id) },
@@ -592,6 +613,7 @@ fun CategoryScreen(
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
                                     sheetText = todo.text
+                                    sheetNotes = todo.notes.map { it.trim() }.joinToString("\n")
                                     sheetMeta = MarkdownParser.TasksMeta(
                                         dueDate = todo.dueDate,
                                         startDate = todo.startDate,
@@ -606,6 +628,7 @@ fun CategoryScreen(
                                     sheetMode = TodoSheetMode.AddSubtask
                                     sheetParentTodo = todo
                                     sheetText = ""
+                                    sheetNotes = ""
                                     sheetMeta = if (settings.enableTasksPluginSupport) {
                                         MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
                                     } else {
@@ -642,6 +665,7 @@ fun CategoryScreen(
                                 enableTasksPluginSupport = settings.enableTasksPluginSupport,
                                 useEmojisInUi = settings.tasksPluginUseEmojisInUi,
                                 showSubtaskButton = settings.enableSubtasks,
+                                showNotes = settings.showNotesInTaskList,
                                 hasSubTasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex),
                                 isCollapsed = todo.id in collapsedTodoIds,
                                 onToggleCollapse = { toggleCollapse(todo.id) },
@@ -649,6 +673,7 @@ fun CategoryScreen(
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
                                     sheetText = todo.text
+                                    sheetNotes = todo.notes.map { it.trim() }.joinToString("\n")
                                     sheetMeta = MarkdownParser.TasksMeta(
                                         dueDate = todo.dueDate,
                                         startDate = todo.startDate,
@@ -663,6 +688,7 @@ fun CategoryScreen(
                                     sheetMode = TodoSheetMode.AddSubtask
                                     sheetParentTodo = todo
                                     sheetText = ""
+                                    sheetNotes = ""
                                     sheetMeta = if (settings.enableTasksPluginSupport) {
                                         MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
                                     } else {
@@ -697,6 +723,7 @@ fun CategoryScreen(
                                 enableTasksPluginSupport = settings.enableTasksPluginSupport,
                                 useEmojisInUi = settings.tasksPluginUseEmojisInUi,
                                 showSubtaskButton = settings.enableSubtasks,
+                                showNotes = settings.showNotesInTaskList,
                                 hasSubTasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex),
                                 isCollapsed = todo.id in collapsedTodoIds,
                                 onToggleCollapse = { toggleCollapse(todo.id) },
@@ -704,6 +731,7 @@ fun CategoryScreen(
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
                                     sheetText = todo.text
+                                    sheetNotes = todo.notes.map { it.trim() }.joinToString("\n")
                                     sheetMeta = MarkdownParser.TasksMeta(
                                         dueDate = todo.dueDate,
                                         startDate = todo.startDate,
@@ -718,6 +746,7 @@ fun CategoryScreen(
                                     sheetMode = TodoSheetMode.AddSubtask
                                     sheetParentTodo = todo
                                     sheetText = ""
+                                    sheetNotes = ""
                                     sheetMeta = if (settings.enableTasksPluginSupport) {
                                         MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
                                     } else {

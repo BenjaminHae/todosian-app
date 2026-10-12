@@ -83,6 +83,7 @@ fun TodoRow(
     modifier: Modifier = Modifier,
     allowMove: Boolean = onRequestMove != null,
     showSubtaskButton: Boolean = true,
+    showNotes: Boolean = true,
     hasSubTasks: Boolean = false,
     isCollapsed: Boolean = false,
     onToggleCollapse: (() -> Unit)? = null,
@@ -208,6 +209,14 @@ fun TodoRow(
                                 }
                             }
                         }
+                    }
+                    if (showNotes && todo.notes.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = todo.notes.map { it.trim() }.joinToString("\n"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 if (hasSubTasks && onToggleCollapse != null) {
