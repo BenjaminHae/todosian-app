@@ -52,7 +52,7 @@
     <string name="category_edit_todo_title">Edit todo</string>
     <string name="category_edit_todo_hint">Todo text</string>
     <string name="task_notes_label">Notes</string>
-    <string name="task_notes_hint">Optional notes for this task (one per line)</string>
+    <string name="task_notes_hint">Optional notes for this task</string>
     <string name="category_delete_todo_title">Delete todo?</string>
     <string name="category_delete_todo_body">This action removes the todo from the markdown file.</string>
     <string name="category_delete_todo_body_with_subtasks">This action removes the todo and its subtasks from the markdown file.</string>
