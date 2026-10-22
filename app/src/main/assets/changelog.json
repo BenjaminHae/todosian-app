@@ -33,6 +33,11 @@
         }
       },
       {
+        "icon": "Edit",
+        "title": "Custom Task Markers",
+        "description": "Choose the text or emoji used for created, start, scheduled, due, done, and recurrence metadata, while staying compatible with the Obsidian Tasks plugin."
+      },
+      {
         "icon": "Swipe",
         "title": "Polished Navigation",
         "description": "Back gestures now play a smooth slide transition, and the home and note screens refresh when you return to the app.",

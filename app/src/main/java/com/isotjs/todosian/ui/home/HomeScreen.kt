@@ -108,7 +108,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val viewModel: HomeViewModel = viewModel(
-        factory = HomeViewModelFactory(fileRepository),
+        factory = HomeViewModelFactory(fileRepository, appSettingsRepository),
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -670,11 +670,12 @@ private fun EmptyHomeState(
 
 private class HomeViewModelFactory(
     private val fileRepository: FileRepository,
+    private val appSettingsRepository: AppSettingsRepository,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return HomeViewModel(fileRepository) as T
+            return HomeViewModel(fileRepository, appSettingsRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

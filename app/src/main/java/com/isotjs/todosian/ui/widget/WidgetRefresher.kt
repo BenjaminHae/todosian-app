@@ -21,6 +21,8 @@ import com.isotjs.todosian.data.FileRepository
 import com.isotjs.todosian.data.model.Category
 import com.isotjs.todosian.data.model.Todo
 import com.isotjs.todosian.utils.MarkdownParser
+import com.isotjs.todosian.utils.TaskMarkers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -232,9 +234,10 @@ object WidgetRefresher {
             Log.w(TAG, "Unable to access file repository")
             return
         }
+        val markers = app.appSettingsRepository.settings.first().toTaskMarkers()
 
         refreshMutex.withLock {
-            val categories = fileRepository.getCategories().getOrDefault(emptyList())
+            val categories = fileRepository.getCategories(markers).getOrDefault(emptyList())
             val widgetStates = glanceIds.map { glanceId ->
                 runCatching {
                     getAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId)
@@ -265,6 +268,7 @@ object WidgetRefresher {
                     linesByUri = linesByUri,
                     selection = selections[index],
                     showCompleted = showCompletedFlags[index],
+                    markers = markers,
                 )
                 runCatching {
                     updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
@@ -296,6 +300,7 @@ object WidgetRefresher {
         linesByUri: Map<Uri, List<String>>,
         selection: WidgetSelection,
         showCompleted: Boolean,
+        markers: TaskMarkers,
     ): WidgetSnapshot {
         val resolved = resolveSelectedCategory(categories, selection)
 
@@ -316,7 +321,7 @@ object WidgetRefresher {
         val scopedCategories = if (resolved != null) listOf(resolved) else categories
         val taskItems = scopedCategories.flatMap { category ->
             val lines = linesByUri[category.uri].orEmpty()
-            MarkdownParser.parse(lines).map { todo ->
+            MarkdownParser.parse(lines, markers).map { todo ->
                 WidgetTaskItem(
                     categoryUri = category.uri.toString(),
                     categoryName = category.displayName,

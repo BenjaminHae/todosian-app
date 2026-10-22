@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.isotjs.todosian.R
 import com.isotjs.todosian.data.FileRepository
 import com.isotjs.todosian.data.model.Todo
+import com.isotjs.todosian.data.settings.AppSettingsRepository
 import com.isotjs.todosian.utils.MarkdownParser
+import com.isotjs.todosian.utils.TaskMarkers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -39,6 +42,7 @@ data class MoveTarget(
 class CategoryViewModel(
     private val fileRepository: FileRepository,
     private val categoryUri: Uri,
+    private val appSettingsRepository: AppSettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CategoryUiState(isLoading = true))
@@ -55,8 +59,7 @@ class CategoryViewModel(
         refreshFromDisk(showLoading = true)
     }
 
-    private fun observeExternalChanges() {
-        @OptIn(FlowPreview::class)
+    private fun observeExternalChanges() {        @OptIn(FlowPreview::class)
         viewModelScope.launch {
             fileRepository.observeDocumentChanges(categoryUri)
                 .debounce(250)
@@ -75,6 +78,7 @@ class CategoryViewModel(
 
     fun refreshFromDisk(showLoading: Boolean = false) {
         viewModelScope.launch {
+            val markers = currentMarkers()
             if (showLoading) {
                 _uiState.value = _uiState.value.copy(isLoading = true)
             }
@@ -92,7 +96,7 @@ class CategoryViewModel(
             val lines = linesResult.getOrThrow()
             if (!showLoading && lines == _uiState.value.lines) return@launch
 
-            val todos = MarkdownParser.parse(lines)
+            val todos = MarkdownParser.parse(lines, markers)
             val (completed, active) = todos.partition { it.isDone }
 
             _uiState.value = CategoryUiState(
@@ -127,11 +131,13 @@ class CategoryViewModel(
 
     fun toggleTodo(todo: Todo, enableTasksPluginSupport: Boolean) {
         viewModelScope.launch {
+            val markers = currentMarkers()
             val previousLines = _uiState.value.lines
             val newLines = MarkdownParser.tryToggleLine(
                 lines = previousLines,
                 lineIndex = todo.lineIndex,
                 enableTasksPlugin = enableTasksPluginSupport,
+                markers = markers,
             )
             if (newLines == null) {
                 _events.emit(Event.ShowMessage(R.string.error_read_failed))
@@ -139,14 +145,14 @@ class CategoryViewModel(
                 return@launch
             }
 
-            applyLines(newLines)
+            applyLines(newLines, markers)
 
             inFlightWrites.incrementAndGet()
             try {
                 val write = fileRepository.writeLines(categoryUri, newLines)
                 if (write.isFailure) {
                     if (_uiState.value.lines == newLines) {
-                        applyLines(previousLines)
+                        applyLines(previousLines, markers)
                     }
                     _events.emit(Event.ShowMessage(R.string.error_write_failed))
                 }
@@ -163,6 +169,7 @@ class CategoryViewModel(
         addAtStart: Boolean = false,
     ) {
         viewModelScope.launch {
+            val markers = currentMarkers()
             val previousLines = _uiState.value.lines
             val newLines = MarkdownParser.addTodo(
                 lines = previousLines,
@@ -170,17 +177,18 @@ class CategoryViewModel(
                 meta = meta,
                 enableTasksPlugin = enableTasksPluginSupport,
                 addAtStart = addAtStart,
+                markers = markers,
             )
             if (newLines == previousLines) return@launch
 
-            applyLines(newLines)
+            applyLines(newLines, markers)
 
             inFlightWrites.incrementAndGet()
             try {
                 val write = fileRepository.writeLines(categoryUri, newLines)
                 if (write.isFailure) {
                     if (_uiState.value.lines == newLines) {
-                        applyLines(previousLines)
+                        applyLines(previousLines, markers)
                     }
                     _events.emit(Event.ShowMessage(R.string.error_write_failed))
                 }
@@ -197,6 +205,7 @@ class CategoryViewModel(
         enableTasksPluginSupport: Boolean,
     ) {
         viewModelScope.launch {
+            val markers = currentMarkers()
             val previousLines = _uiState.value.lines
             val newLines = MarkdownParser.addSubTodo(
                 lines = previousLines,
@@ -204,6 +213,7 @@ class CategoryViewModel(
                 text = text,
                 meta = meta,
                 enableTasksPlugin = enableTasksPluginSupport,
+                markers = markers,
             )
             if (newLines == null) {
                 _events.emit(Event.ShowMessage(R.string.error_read_failed))
@@ -211,14 +221,14 @@ class CategoryViewModel(
                 return@launch
             }
 
-            applyLines(newLines)
+            applyLines(newLines, markers)
 
             inFlightWrites.incrementAndGet()
             try {
                 val write = fileRepository.writeLines(categoryUri, newLines)
                 if (write.isFailure) {
                     if (_uiState.value.lines == newLines) {
-                        applyLines(previousLines)
+                        applyLines(previousLines, markers)
                     }
                     _events.emit(Event.ShowMessage(R.string.error_write_failed))
                 }
@@ -235,6 +245,7 @@ class CategoryViewModel(
         enableTasksPluginSupport: Boolean,
     ) {
         viewModelScope.launch {
+            val markers = currentMarkers()
             val previousLines = _uiState.value.lines
             val newLines = if (enableTasksPluginSupport) {
                 MarkdownParser.editTodo(
@@ -243,9 +254,10 @@ class CategoryViewModel(
                     newText = newText,
                     meta = meta,
                     enableTasksPlugin = true,
+                    markers = markers,
                 )
             } else {
-                val updated = MarkdownParser.tryEditTodoText(previousLines, todo.lineIndex, newText)
+                val updated = MarkdownParser.tryEditTodoText(previousLines, todo.lineIndex, newText, markers)
                 if (updated == null) {
                     _events.emit(Event.ShowMessage(R.string.error_read_failed))
                     refreshFromDisk(showLoading = false)
@@ -254,14 +266,14 @@ class CategoryViewModel(
                 updated
             }
 
-            applyLines(newLines)
+            applyLines(newLines, markers)
 
             inFlightWrites.incrementAndGet()
             try {
                 val write = fileRepository.writeLines(categoryUri, newLines)
                 if (write.isFailure) {
                     if (_uiState.value.lines == newLines) {
-                        applyLines(previousLines)
+                        applyLines(previousLines, markers)
                     }
                     _events.emit(Event.ShowMessage(R.string.error_write_failed))
                 }
@@ -273,6 +285,7 @@ class CategoryViewModel(
 
     fun deleteTodo(todo: Todo) {
         viewModelScope.launch {
+            val markers = currentMarkers()
             val previousLines = _uiState.value.lines
             val newLines = MarkdownParser.tryDeleteTodoWithSubtasks(previousLines, todo.lineIndex)
             if (newLines == null) {
@@ -281,14 +294,14 @@ class CategoryViewModel(
                 return@launch
             }
 
-            applyLines(newLines)
+            applyLines(newLines, markers)
 
             inFlightWrites.incrementAndGet()
             try {
                 val write = fileRepository.writeLines(categoryUri, newLines)
                 if (write.isFailure) {
                     if (_uiState.value.lines == newLines) {
-                        applyLines(previousLines)
+                        applyLines(previousLines, markers)
                     }
                     _events.emit(Event.ShowMessage(R.string.error_write_failed))
                 }
@@ -304,6 +317,7 @@ class CategoryViewModel(
                 _events.emit(Event.ShowMessage(R.string.category_move_subtask_disabled))
                 return@launch
             }
+            val markers = currentMarkers()
             val previousLines = _uiState.value.lines
             val newLines = MarkdownParser.tryDeleteTodoWithSubtasks(previousLines, todo.lineIndex)
             if (newLines == null) {
@@ -312,14 +326,14 @@ class CategoryViewModel(
                 return@launch
             }
 
-            applyLines(newLines)
+            applyLines(newLines, markers)
 
             inFlightWrites.incrementAndGet()
             try {
                 val result = fileRepository.moveTodoLine(categoryUri, targetUri, todo.lineIndex)
                 if (result.isFailure) {
                     if (_uiState.value.lines == newLines) {
-                        applyLines(previousLines)
+                        applyLines(previousLines, markers)
                     }
                     _events.emit(Event.ShowMessage(R.string.error_write_failed))
                 } else {
@@ -354,8 +368,8 @@ class CategoryViewModel(
         }
     }
 
-    private fun applyLines(lines: List<String>) {
-        val todos = MarkdownParser.parse(lines)
+    private fun applyLines(lines: List<String>, markers: TaskMarkers) {
+        val todos = MarkdownParser.parse(lines, markers)
         val (completed, active) = todos.partition { it.isDone }
         _uiState.value = _uiState.value.copy(
             activeTodos = active.sortedBy { it.lineIndex },
@@ -364,6 +378,9 @@ class CategoryViewModel(
             moveTargets = _uiState.value.moveTargets,
         )
     }
+
+    private suspend fun currentMarkers(): TaskMarkers =
+        appSettingsRepository.settings.first().toTaskMarkers()
 
     sealed interface Event {
         data class ShowMessage(@param:StringRes val messageResId: Int) : Event

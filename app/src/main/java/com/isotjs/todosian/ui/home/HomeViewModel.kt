@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.isotjs.todosian.R
 import com.isotjs.todosian.data.FileRepository
 import com.isotjs.todosian.data.model.Category
+import com.isotjs.todosian.data.settings.AppSettingsRepository
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +32,7 @@ data class HomeUiState(
 
 class HomeViewModel(
     private val fileRepository: FileRepository,
+    private val appSettingsRepository: AppSettingsRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(isLoading = true))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -54,7 +57,8 @@ class HomeViewModel(
             if (shouldShowLoading) {
                 _uiState.value = _uiState.value.copy(isLoading = true)
             }
-            val result = fileRepository.getCategories()
+            val markers = appSettingsRepository.settings.first().toTaskMarkers()
+            val result = fileRepository.getCategories(markers)
             if (result.isFailure) {
                 fileRepository.clearFolderUri()
                 _events.emit(Event.ShowMessage(R.string.error_folder_invalid))

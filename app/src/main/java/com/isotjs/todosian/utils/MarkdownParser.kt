@@ -5,30 +5,43 @@ import com.isotjs.todosian.data.model.Todo
 import java.time.LocalDate
 import java.util.UUID
 
+data class TaskMarkers(
+    val created: String = "➕",
+    val start: String = "🛫",
+    val scheduled: String = "⏳",
+    val due: String = "📅",
+    val done: String = "✅",
+    val recurrence: String = "🔁",
+) {
+    companion object {
+        val Default = TaskMarkers()
+    }
+}
+
 object MarkdownParser {
     private val todoRegex = Regex("""^([ \t]*)- \[(x| )\] (.*)$""")
 
-    private val dueSuffixRegex = Regex("""\s📅\s(\d{4}-\d{2}-\d{2})\s*$""")
-    private val startSuffixRegex = Regex("""\s🛫\s(\d{4}-\d{2}-\d{2})\s*$""")
-    private val scheduledSuffixRegex = Regex("""\s⏳\s(\d{4}-\d{2}-\d{2})\s*$""")
-    private val completionSuffixRegex = Regex("""\s✅\s(\d{4}-\d{2}-\d{2})\s*$""")
-    private val createdSuffixRegex = Regex("""\s➕\s(\d{4}-\d{2}-\d{2})\s*$""")
-
     private val prioritySuffixRegex = Regex("""\s(🔺|⏫|🔼|🔽|⏬️?|⏬)\s*$""")
-    private val recurrenceSuffixRegex = Regex("""\s🔁\s(.+?)\s*$""")
 
-    private val completionAnywhereRegex = Regex("""\s✅\s\d{4}-\d{2}-\d{2}(?=\s|$)""")
+    private fun dateSuffixRegex(marker: String) =
+        Regex("""\s${Regex.escape(marker)}\s*(\d{4}-\d{2}-\d{2})\s*$""")
+
+    private fun recurrenceSuffixRegex(marker: String) =
+        Regex("""\s${Regex.escape(marker)}\s*(.+?)\s*$""")
+
+    private fun completionAnywhereRegex(marker: String) =
+        Regex("""\s${Regex.escape(marker)}\s*\d{4}-\d{2}-\d{2}(?=\s|$)""")
 
     private fun isTodoLine(line: String): Boolean = todoRegex.matches(line)
 
-    fun parse(lines: List<String>): List<Todo> {
+    fun parse(lines: List<String>, markers: TaskMarkers = TaskMarkers.Default): List<Todo> {
         return lines.mapIndexedNotNull { index, line ->
             val match = todoRegex.matchEntire(line) ?: return@mapIndexedNotNull null
             val indentPrefix = match.groupValues[1]
             val isDone = match.groupValues[2] == "x"
             val remainder = match.groupValues[3]
 
-            val parsed = parseRemainder(remainder)
+            val parsed = parseRemainder(remainder, markers)
             Todo(
                 id = UUID.randomUUID().toString(),
                 text = parsed.mainText,
@@ -51,6 +64,7 @@ object MarkdownParser {
         lineIndex: Int,
         enableTasksPlugin: Boolean,
         today: LocalDate = LocalDate.now(),
+        markers: TaskMarkers = TaskMarkers.Default,
     ): List<String> {
         if (lineIndex !in lines.indices) return lines
 
@@ -67,9 +81,9 @@ object MarkdownParser {
         val newRemainder = if (!enableTasksPlugin) {
             remainder
         } else {
-            val withoutDoneDate = removeCompletionDate(remainder)
+            val withoutDoneDate = removeCompletionDate(remainder, markers)
             if (!isDone) {
-                withoutDoneDate + " ✅ $todayStr"
+                withoutDoneDate + " ${markers.done} $todayStr"
             } else {
                 withoutDoneDate
             }
@@ -79,9 +93,9 @@ object MarkdownParser {
         val updatedLines = lines.toMutableList().apply {
             this[lineIndex] = newLine
         }
-        
+
         if (!isDone && enableTasksPlugin) {
-            val parsed = parseRemainder(remainder)
+            val parsed = parseRemainder(remainder, markers)
             val rule = parsed.meta.recurrence
             if (!rule.isNullOrBlank()) {
                 val nextLine = buildRecurredTaskLine(
@@ -90,6 +104,7 @@ object MarkdownParser {
                     originalMeta = parsed.meta,
                     rule = rule,
                     today = today,
+                    markers = markers,
                 )
                 if (nextLine != null) {
                     return updatedLines.toMutableList().apply {
@@ -107,11 +122,12 @@ object MarkdownParser {
         lineIndex: Int,
         enableTasksPlugin: Boolean,
         today: LocalDate = LocalDate.now(),
+        markers: TaskMarkers = TaskMarkers.Default,
     ): List<String>? {
         if (lineIndex !in lines.indices) return null
         val line = lines[lineIndex]
         if (!isTodoLine(line)) return null
-        return toggleLine(lines, lineIndex, enableTasksPlugin, today)
+        return toggleLine(lines, lineIndex, enableTasksPlugin, today, markers)
     }
 
     fun addTodo(
@@ -120,6 +136,7 @@ object MarkdownParser {
         meta: TasksMeta? = null,
         enableTasksPlugin: Boolean = false,
         addAtStart: Boolean = false,
+        markers: TaskMarkers = TaskMarkers.Default,
     ): List<String> {
         val cleaned = text.trim()
         if (cleaned.isEmpty()) return lines
@@ -129,6 +146,7 @@ object MarkdownParser {
             meta = meta,
             enableTasksPlugin = enableTasksPlugin,
             indentPrefix = "",
+            markers = markers,
         )
 
         if (lines.isEmpty()) return listOf(newLine)
@@ -151,6 +169,7 @@ object MarkdownParser {
         text: String,
         meta: TasksMeta? = null,
         enableTasksPlugin: Boolean = false,
+        markers: TaskMarkers = TaskMarkers.Default,
     ): List<String>? {
         val cleaned = text.trim()
         if (cleaned.isEmpty()) return null
@@ -169,6 +188,7 @@ object MarkdownParser {
             meta = meta,
             enableTasksPlugin = enableTasksPlugin,
             indentPrefix = newIndentPrefix,
+            markers = markers,
         )
 
         var insertIndex = parentLineIndex + 1
@@ -227,6 +247,7 @@ object MarkdownParser {
         lines: List<String>,
         lineIndex: Int,
         newText: String,
+        markers: TaskMarkers = TaskMarkers.Default,
     ): List<String> {
         val cleaned = newText.trim()
         if (cleaned.isEmpty()) return lines
@@ -237,7 +258,7 @@ object MarkdownParser {
         val indentPrefix = match.groupValues[1]
         val mark = match.groupValues[2]
         val remainder = match.groupValues[3]
-        val parsed = parseRemainder(remainder)
+        val parsed = parseRemainder(remainder, markers)
 
         val newRemainder = buildString {
             append(cleaned)
@@ -252,6 +273,7 @@ object MarkdownParser {
         lines: List<String>,
         lineIndex: Int,
         newText: String,
+        markers: TaskMarkers = TaskMarkers.Default,
     ): List<String>? {
         val cleaned = newText.trim()
         if (cleaned.isEmpty()) return null
@@ -259,7 +281,7 @@ object MarkdownParser {
 
         val line = lines[lineIndex]
         if (!isTodoLine(line)) return null
-        return editTodoText(lines, lineIndex, cleaned)
+        return editTodoText(lines, lineIndex, cleaned, markers)
     }
 
     fun tryCopyTodoLine(
@@ -311,6 +333,7 @@ object MarkdownParser {
         newText: String,
         meta: TasksMeta?,
         enableTasksPlugin: Boolean,
+        markers: TaskMarkers = TaskMarkers.Default,
     ): List<String> {
         val cleaned = newText.trim()
         if (cleaned.isEmpty()) return lines
@@ -328,7 +351,7 @@ object MarkdownParser {
             append(mark)
             append("] ")
             append(cleaned)
-            val suffix = resolvedMeta?.toSuffixString().orEmpty()
+            val suffix = resolvedMeta?.toSuffixString(markers).orEmpty()
             if (suffix.isNotEmpty()) append(suffix)
         }
 
@@ -343,6 +366,7 @@ object MarkdownParser {
         originalMeta: TasksMeta,
         rule: String,
         today: LocalDate,
+        markers: TaskMarkers,
     ): String? {
         val next = RecurrenceEngine.nextOccurrence(
             ruleText = rule,
@@ -366,7 +390,7 @@ object MarkdownParser {
             append(indentPrefix)
             append("- [ ] ")
             append(taskText)
-            val suffix = newMeta.toSuffixString()
+            val suffix = newMeta.toSuffixString(markers)
             if (suffix.isNotEmpty()) append(suffix)
         }
     }
@@ -376,6 +400,7 @@ object MarkdownParser {
         meta: TasksMeta?,
         enableTasksPlugin: Boolean,
         indentPrefix: String,
+        markers: TaskMarkers,
     ): String {
         val resolvedMeta = if (enableTasksPlugin) {
             (meta ?: TasksMeta()).let { current ->
@@ -389,7 +414,7 @@ object MarkdownParser {
             append(indentPrefix)
             append("- [ ] ")
             append(text)
-            val suffix = resolvedMeta?.toSuffixString().orEmpty()
+            val suffix = resolvedMeta?.toSuffixString(markers).orEmpty()
             if (suffix.isNotEmpty()) append(suffix)
         }
     }
@@ -407,8 +432,8 @@ object MarkdownParser {
         return if (prefix.contains('\t')) "\t" else "  "
     }
 
-    private fun removeCompletionDate(remainder: String): String {
-        val removed = remainder.replace(completionAnywhereRegex, "")
+    private fun removeCompletionDate(remainder: String, markers: TaskMarkers): String {
+        val removed = remainder.replace(completionAnywhereRegex(markers.done), "")
         return removed.replace(Regex("""\s{2,}"""), " ").trimEnd()
     }
 
@@ -427,14 +452,14 @@ object MarkdownParser {
         val priority: TasksPriority? = null,
         val recurrence: String? = null,
     ) {
-        fun toSuffixString(): String {
+        fun toSuffixString(markers: TaskMarkers = TaskMarkers.Default): String {
             val parts = ArrayList<String>(8)
-            if (createdDate != null) parts.add("➕ $createdDate")
-            if (startDate != null) parts.add("🛫 $startDate")
-            if (scheduledDate != null) parts.add("⏳ $scheduledDate")
-            if (dueDate != null) parts.add("📅 $dueDate")
-            if (completionDate != null) parts.add("✅ $completionDate")
-            if (!recurrence.isNullOrBlank()) parts.add("🔁 ${recurrence.trim()}")
+            if (createdDate != null) parts.add("${markers.created} $createdDate")
+            if (startDate != null) parts.add("${markers.start} $startDate")
+            if (scheduledDate != null) parts.add("${markers.scheduled} $scheduledDate")
+            if (dueDate != null) parts.add("${markers.due} $dueDate")
+            if (completionDate != null) parts.add("${markers.done} $completionDate")
+            if (!recurrence.isNullOrBlank()) parts.add("${markers.recurrence} ${recurrence.trim()}")
             val prio = priority
             if (prio != null && prio != TasksPriority.NONE) {
                 parts.add(priorityToEmoji(prio))
@@ -448,8 +473,15 @@ object MarkdownParser {
         }
     }
 
-    private fun parseRemainder(remainder: String): ParsedRemainder {
+    private fun parseRemainder(remainder: String, markers: TaskMarkers): ParsedRemainder {
         var working = remainder.trimEnd()
+
+        val completionRegex = dateSuffixRegex(markers.done)
+        val dueRegex = dateSuffixRegex(markers.due)
+        val startRegex = dateSuffixRegex(markers.start)
+        val scheduledRegex = dateSuffixRegex(markers.scheduled)
+        val createdRegex = dateSuffixRegex(markers.created)
+        val recurrenceRegex = recurrenceSuffixRegex(markers.recurrence)
 
         val suffixParts = mutableListOf<String>()
 
@@ -462,7 +494,7 @@ object MarkdownParser {
         var recurrence: String? = null
 
         while (true) {
-            val completion = completionSuffixRegex.find(working)
+            val completion = completionRegex.find(working)
             if (completion != null) {
                 completionDate = completion.groupValues[1]
                 suffixParts.add(0, working.substring(completion.range.first))
@@ -470,7 +502,7 @@ object MarkdownParser {
                 continue
             }
 
-            val due = dueSuffixRegex.find(working)
+            val due = dueRegex.find(working)
             if (due != null) {
                 dueDate = due.groupValues[1]
                 suffixParts.add(0, working.substring(due.range.first))
@@ -478,7 +510,7 @@ object MarkdownParser {
                 continue
             }
 
-            val start = startSuffixRegex.find(working)
+            val start = startRegex.find(working)
             if (start != null) {
                 startDate = start.groupValues[1]
                 suffixParts.add(0, working.substring(start.range.first))
@@ -486,7 +518,7 @@ object MarkdownParser {
                 continue
             }
 
-            val scheduled = scheduledSuffixRegex.find(working)
+            val scheduled = scheduledRegex.find(working)
             if (scheduled != null) {
                 scheduledDate = scheduled.groupValues[1]
                 suffixParts.add(0, working.substring(scheduled.range.first))
@@ -494,7 +526,7 @@ object MarkdownParser {
                 continue
             }
 
-            val created = createdSuffixRegex.find(working)
+            val created = createdRegex.find(working)
             if (created != null) {
                 createdDate = created.groupValues[1]
                 suffixParts.add(0, working.substring(created.range.first))
@@ -510,7 +542,7 @@ object MarkdownParser {
                 continue
             }
 
-            val recur = recurrenceSuffixRegex.find(working)
+            val recur = recurrenceRegex.find(working)
             if (recur != null) {
                 recurrence = recur.groupValues[1].trim()
                 suffixParts.add(0, working.substring(recur.range.first))

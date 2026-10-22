@@ -103,6 +103,7 @@ fun CategoryScreen(
         factory = CategoryViewModelFactory(
             fileRepository = fileRepository,
             categoryUri = categoryUri,
+            appSettingsRepository = appSettingsRepository,
         ),
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -762,11 +763,12 @@ private fun sortTodosByPriorityKeepingSubtasks(todos: List<Todo>): List<Todo> {
 private class CategoryViewModelFactory(
     private val fileRepository: FileRepository,
     private val categoryUri: Uri,
+    private val appSettingsRepository: AppSettingsRepository,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CategoryViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return CategoryViewModel(fileRepository, categoryUri) as T
+            return CategoryViewModel(fileRepository, categoryUri, appSettingsRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.isotjs.todosian.data.model.Category
 import com.isotjs.todosian.utils.MarkdownParser
+import com.isotjs.todosian.utils.TaskMarkers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,7 +52,7 @@ interface FileRepository {
 
     suspend fun persistFolderUri(uri: Uri): Result<Unit>
 
-    suspend fun getCategories(): Result<List<Category>>
+    suspend fun getCategories(markers: TaskMarkers = TaskMarkers.Default): Result<List<Category>>
 
     suspend fun readLines(uri: Uri): Result<List<String>>
 
@@ -150,7 +151,7 @@ class SafFileRepository(
         }
     }
 
-    override suspend fun getCategories(): Result<List<Category>> {
+    override suspend fun getCategories(markers: TaskMarkers): Result<List<Category>> {
         val folderUri = getFolderUri() ?: return Result.success(emptyList())
         return withContext(Dispatchers.IO) {
             runCatching {
@@ -168,7 +169,7 @@ class SafFileRepository(
                         val name = file.name ?: ""
                         val displayName = name.removeSuffix(".md")
                         val lines = readLinesInternal(file.uri)
-                        val todos = MarkdownParser.parse(lines)
+                        val todos = MarkdownParser.parse(lines, markers)
                         val doneCount = todos.count { it.isDone }
                         val today = LocalDate.now().toString()
                         val activeTodos = todos.filter { !it.isDone }
