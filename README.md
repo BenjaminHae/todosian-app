@@ -1,6 +1,7 @@
 <h1 align="center">Todosian</h1>
 
 <p align="center">
+  <a href="https://github.com/isotjs/todosian-app/actions"><img src="https://img.shields.io/github/actions/workflow/status/isotjs/todosian-app/ci.yml?label=CI&color=7C3AED" alt="CI"></a>
   <a href="https://github.com/isotjs/todosian-app/releases/latest"><img src="https://img.shields.io/github/v/release/isotjs/todosian-app?label=release&color=6A40F9" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-5030C0" alt="License"></a>
   <a href="https://github.com/isotjs/todosian-app/releases"><img src="https://img.shields.io/github/downloads/isotjs/todosian-app/total?color=8B5CF6" alt="Downloads"></a>
