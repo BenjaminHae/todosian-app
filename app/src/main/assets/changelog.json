@@ -5,42 +5,18 @@
     "items": [
       {
         "icon": "Palette",
-        "title": "Fresh Expressive Look",
-        "description": "Settings is now organized into grouped cards with a large title that collapses as you scroll, and dependent options animate in when you enable them."
-      },
-      {
-        "icon": "Checklist",
-        "title": "Friendly Empty States",
-        "description": "Home, category, daily focus, and the add-task picker now show illustrated placeholders instead of plain text."
-      },
-      {
-        "icon": "AutoAwesome",
-        "title": "Smoother Motion",
-        "description": "The app now uses the Material 3 Expressive motion scheme for more natural, consistent animations throughout."
-      },
-      {
-        "icon": "Stars",
-        "title": "Redesigned Onboarding",
-        "description": "A clearer first-run experience with an animated hero and a more prominent folder picker."
-      },
-      {
-        "icon": "Widgets",
-        "title": "Better Widgets",
-        "description": "Choose which list a widget shows, hide completed tasks, and see it update the moment your todos change.",
-        "contributor": {
-          "name": "willl03",
-          "url": "https://github.com/willl03"
-        }
+        "title": "A Fresh Look",
+        "description": "Settings, onboarding, and empty screens share a calmer, more expressive design."
       },
       {
         "icon": "Edit",
-        "title": "Custom Task Markers",
-        "description": "Choose the text or emoji used for created, start, scheduled, due, done, and recurrence metadata, while staying compatible with the Obsidian Tasks plugin."
+        "title": "Your Own Task Markers",
+        "description": "Choose the text or emoji for dates, priority, and recurrence, still compatible with Obsidian Tasks."
       },
       {
-        "icon": "Swipe",
-        "title": "Polished Navigation",
-        "description": "Back gestures now play a smooth slide transition, and the home and note screens refresh when you return to the app.",
+        "icon": "Widgets",
+        "title": "Widgets Your Way",
+        "description": "Pick the list each widget shows, hide completed tasks, and see changes right away.",
         "contributor": {
           "name": "willl03",
           "url": "https://github.com/willl03"
@@ -48,8 +24,8 @@
       },
       {
         "icon": "BugReport",
-        "title": "Rendering Freeze Fix",
-        "description": "Fixed a rare freeze caused by the floating action button's shadow.",
+        "title": "Polish & Fixes",
+        "description": "Back gestures slide naturally, and a rare freeze from the floating button is fixed.",
         "contributor": {
           "name": "willl03",
           "url": "https://github.com/willl03"
@@ -58,12 +34,7 @@
       {
         "icon": "Security",
         "title": "Safer Note Links",
-        "description": "Notes opened from external intents and widgets are now validated to keep your files safe."
-      },
-      {
-        "icon": "Speed",
-        "title": "Updated Foundation",
-        "description": "Updated Gradle, Android Gradle Plugin, Kotlin, Compose BOM, and AndroidX libraries."
+        "description": "Notes opened from other apps or widgets are now validated before they are read."
       }
     ]
   }
