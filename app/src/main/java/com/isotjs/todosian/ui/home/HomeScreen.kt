@@ -13,6 +13,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -85,6 +87,7 @@ import com.isotjs.todosian.ui.components.TodosianDimens
 import com.isotjs.todosian.ui.components.TodosianEmptyState
 import com.isotjs.todosian.ui.components.TodosianLoadingIndicator
 import com.isotjs.todosian.ui.components.TodosianLinearProgress
+import com.isotjs.todosian.ui.components.TodosianPullToRefreshBox
 import com.isotjs.todosian.ui.components.todosianFabShape
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -389,96 +392,117 @@ fun HomeScreen(
             }
         }
 
-        AnimatedContent(
-            targetState = contentState,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
-            },
-            label = "home-content",
+        TodosianPullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refresh(showLoading = false, showRefreshing = true) },
+            enabled = !uiState.isLoading,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = TodosianDimens.ScreenHorizontalPadding),
-        ) { state ->
-            when (state) {
-                HomeContentState.LOADING -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        TodosianLoadingIndicator()
-                    }
-                }
-
-                HomeContentState.EMPTY -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        AnimatedVisibility(
-                            visible = settings.showDailyFocus,
-                            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-                            exit = fadeOut(tween(140)) + shrinkVertically(tween(200)),
+        ) {
+            AnimatedContent(
+                targetState = contentState,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(220)) togetherWith
+                        fadeOut(animationSpec = tween(160))
+                },
+                label = "home-content",
+                modifier = Modifier.fillMaxSize(),
+            ) { state ->
+                when (state) {
+                    HomeContentState.LOADING -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Column {
-                                DailyFocusBanner(
-                                    remaining = uiState.remainingFor(settings.dailyFocusMode),
-                                    mode = settings.dailyFocusMode,
-                                    onClick = onOpenDailyFocus,
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
+                            TodosianLoadingIndicator()
+                        }
+                    }
+
+                    HomeContentState.EMPTY -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            AnimatedVisibility(
+                                visible = settings.showDailyFocus,
+                                enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                                exit = fadeOut(tween(140)) + shrinkVertically(tween(200)),
+                            ) {
+                                Column {
+                                    DailyFocusBanner(
+                                        remaining = uiState.remainingFor(settings.dailyFocusMode),
+                                        mode = settings.dailyFocusMode,
+                                        onClick = onOpenDailyFocus,
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                }
+                            }
+                            BoxWithConstraints(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                            ) {
+                                val viewportHeight = maxHeight
+                                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                    item {
+                                        EmptyHomeState(
+                                            onCreateCategory = { showNewCategorySheet = true },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(viewportHeight),
+                                        )
+                                    }
+                                }
                             }
                         }
-                        EmptyHomeState(
-                            onCreateCategory = { showNewCategorySheet = true },
-                            modifier = Modifier.fillMaxSize(),
-                        )
                     }
-                }
 
-                HomeContentState.DATA -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        AnimatedVisibility(
-                            visible = settings.showDailyFocus,
-                            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-                            exit = fadeOut(tween(140)) + shrinkVertically(tween(200)),
-                        ) {
-                            Column {
-                                DailyFocusBanner(
-                                    remaining = uiState.remainingFor(settings.dailyFocusMode),
-                                    mode = settings.dailyFocusMode,
-                                    onClick = onOpenDailyFocus,
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
+                    HomeContentState.DATA -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            AnimatedVisibility(
+                                visible = settings.showDailyFocus,
+                                enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                                exit = fadeOut(tween(140)) + shrinkVertically(tween(200)),
+                            ) {
+                                Column {
+                                    DailyFocusBanner(
+                                        remaining = uiState.remainingFor(settings.dailyFocusMode),
+                                        mode = settings.dailyFocusMode,
+                                        onClick = onOpenDailyFocus,
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                }
                             }
-                        }
 
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(bottom = 96.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            items(
-                                items = categories,
-                                key = { it.uri.toString() },
-                            ) { category ->
-                                CategoryCard(
-                                    category = category,
-                                    onClick = { onOpenCategory(category.uri) },
-                                    onRename = {
-                                        renameTarget = category
-                                        renameValue = category.displayName
-                                    },
-                                    onDelete = {
-                                        deleteTarget = category
-                                    },
-                                    modifier = Modifier.animateItem(
-                                        fadeInSpec = tween(durationMillis = 180),
-                                        placementSpec = spring(
-                                            stiffness = Spring.StiffnessMediumLow,
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                contentPadding = PaddingValues(bottom = 96.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                items(
+                                    items = categories,
+                                    key = { it.uri.toString() },
+                                ) { category ->
+                                    CategoryCard(
+                                        category = category,
+                                        onClick = { onOpenCategory(category.uri) },
+                                        onRename = {
+                                            renameTarget = category
+                                            renameValue = category.displayName
+                                        },
+                                        onDelete = {
+                                            deleteTarget = category
+                                        },
+                                        modifier = Modifier.animateItem(
+                                            fadeInSpec = tween(durationMillis = 180),
+                                            placementSpec = spring(
+                                                stiffness = Spring.StiffnessMediumLow,
+                                            ),
+                                            fadeOutSpec = tween(durationMillis = 160),
                                         ),
-                                        fadeOutSpec = tween(durationMillis = 160),
-                                    ),
-                                )
+                                    )
+                                }
                             }
                         }
                     }

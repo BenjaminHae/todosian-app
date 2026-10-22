@@ -80,6 +80,7 @@ import com.isotjs.todosian.ui.components.TodoSheetMode
 import com.isotjs.todosian.ui.components.TodosianDimens
 import com.isotjs.todosian.ui.components.TodosianEmptyState
 import com.isotjs.todosian.ui.components.TodosianLoadingIndicator
+import com.isotjs.todosian.ui.components.TodosianPullToRefreshBox
 import com.isotjs.todosian.ui.components.TodosianSectionHeader
 import com.isotjs.todosian.ui.components.todosianFabShape
 import com.isotjs.todosian.utils.MarkdownParser
@@ -490,205 +491,210 @@ fun CategoryScreen(
         },
         modifier = modifier.fillMaxSize(),
     ) { padding ->
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                TodosianLoadingIndicator()
-            }
-            return@Scaffold
-        }
-
         val anyTodos = uiState.activeTodos.isNotEmpty() || uiState.completedTodos.isNotEmpty()
-        if (!anyTodos) {
-            TodosianEmptyState(
-                icon = Icons.Outlined.Checklist,
-                title = stringResource(R.string.category_empty_title),
-                subtitle = stringResource(R.string.category_empty_subtitle),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            )
-            return@Scaffold
-        }
-
-        val sortedActiveTodos = remember(uiState.activeTodos, settings.todoSort) {
-            sortTodos(uiState.activeTodos, settings.todoSort)
-        }
-        val sortedCompletedTodos = remember(uiState.completedTodos, settings.todoSort) {
-            sortTodos(uiState.completedTodos, settings.todoSort)
-        }
-        val sortedAllTodos = remember(uiState.activeTodos, uiState.completedTodos, settings.todoSort) {
-            sortTodos(uiState.activeTodos + uiState.completedTodos, settings.todoSort)
-        }
-
-        LazyColumn(
+        TodosianPullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refreshFromDisk(pullRefresh = true) },
+            enabled = !uiState.isLoading,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = TodosianDimens.ScreenHorizontalPadding),
         ) {
-            if (settings.todoGrouping == TodoGrouping.FILE_ORDER) {
-                items(
-                    items = sortedAllTodos,
-                    key = { it.id },
-                ) { todo ->
-                    TodoRow(
-                        todo = todo,
-                        enableTasksPluginSupport = settings.enableTasksPluginSupport,
-                        useEmojisInUi = settings.tasksPluginUseEmojisInUi,
-                        showSubtaskButton = settings.enableSubtasks,
-                        onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
-                        onEdit = {
-                            sheetMode = TodoSheetMode.Edit(todo)
-                            sheetText = todo.text
-                            sheetMeta = MarkdownParser.TasksMeta(
-                                dueDate = todo.dueDate,
-                                startDate = todo.startDate,
-                                scheduledDate = todo.scheduledDate,
-                                completionDate = todo.completionDate,
-                                createdDate = todo.createdDate,
-                                priority = todo.priority,
-                                recurrence = todo.recurrence,
-                            )
-                        },
-                        onAddSubtask = {
-                            sheetMode = TodoSheetMode.AddSubtask
-                            sheetParentTodo = todo
-                            sheetText = ""
-                            sheetMeta = if (settings.enableTasksPluginSupport) {
-                                MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
-                            } else {
-                                MarkdownParser.TasksMeta()
-                            }
-                        },
-                        onRequestDelete = {
-                            deleteTodoTarget = todo
-                            deleteTodoHasSubtasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex)
-                        },
-                        onRequestMove = { moveTodoTarget = todo },
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(durationMillis = 180),
-                            placementSpec = spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                            ),
-                            fadeOutSpec = tween(durationMillis = 160),
-                        ),
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TodosianLoadingIndicator()
                 }
-                item { Spacer(modifier = Modifier.height(96.dp)) }
-                return@LazyColumn
-            }
+            } else if (!anyTodos) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    item {
+                        TodosianEmptyState(
+                            icon = Icons.Outlined.Checklist,
+                            title = stringResource(R.string.category_empty_title),
+                            subtitle = stringResource(R.string.category_empty_subtitle),
+                            modifier = Modifier.fillParentMaxSize(),
+                        )
+                    }
+                }
+            } else {
+                val sortedActiveTodos = remember(uiState.activeTodos, settings.todoSort) {
+                    sortTodos(uiState.activeTodos, settings.todoSort)
+                }
+                val sortedCompletedTodos = remember(uiState.completedTodos, settings.todoSort) {
+                    sortTodos(uiState.completedTodos, settings.todoSort)
+                }
+                val sortedAllTodos = remember(
+                    uiState.activeTodos,
+                    uiState.completedTodos,
+                    settings.todoSort,
+                ) {
+                    sortTodos(uiState.activeTodos + uiState.completedTodos, settings.todoSort)
+                }
 
-            if (sortedActiveTodos.isNotEmpty()) {
-                item { TodosianSectionHeader(text = stringResource(R.string.category_active)) }
-                items(
-                    items = sortedActiveTodos,
-                    key = { it.id },
-                ) { todo ->
-                    TodoRow(
-                        todo = todo,
-                        enableTasksPluginSupport = settings.enableTasksPluginSupport,
-                        useEmojisInUi = settings.tasksPluginUseEmojisInUi,
-                        showSubtaskButton = settings.enableSubtasks,
-                        onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
-                        onEdit = {
-                            sheetMode = TodoSheetMode.Edit(todo)
-                            sheetText = todo.text
-                            sheetMeta = MarkdownParser.TasksMeta(
-                                dueDate = todo.dueDate,
-                                startDate = todo.startDate,
-                                scheduledDate = todo.scheduledDate,
-                                completionDate = todo.completionDate,
-                                createdDate = todo.createdDate,
-                                priority = todo.priority,
-                                recurrence = todo.recurrence,
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    if (settings.todoGrouping == TodoGrouping.FILE_ORDER) {
+                        items(
+                            items = sortedAllTodos,
+                            key = { it.id },
+                        ) { todo ->
+                            TodoRow(
+                                todo = todo,
+                                enableTasksPluginSupport = settings.enableTasksPluginSupport,
+                                useEmojisInUi = settings.tasksPluginUseEmojisInUi,
+                                showSubtaskButton = settings.enableSubtasks,
+                                onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
+                                onEdit = {
+                                    sheetMode = TodoSheetMode.Edit(todo)
+                                    sheetText = todo.text
+                                    sheetMeta = MarkdownParser.TasksMeta(
+                                        dueDate = todo.dueDate,
+                                        startDate = todo.startDate,
+                                        scheduledDate = todo.scheduledDate,
+                                        completionDate = todo.completionDate,
+                                        createdDate = todo.createdDate,
+                                        priority = todo.priority,
+                                        recurrence = todo.recurrence,
+                                    )
+                                },
+                                onAddSubtask = {
+                                    sheetMode = TodoSheetMode.AddSubtask
+                                    sheetParentTodo = todo
+                                    sheetText = ""
+                                    sheetMeta = if (settings.enableTasksPluginSupport) {
+                                        MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
+                                    } else {
+                                        MarkdownParser.TasksMeta()
+                                    }
+                                },
+                                onRequestDelete = {
+                                    deleteTodoTarget = todo
+                                    deleteTodoHasSubtasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex)
+                                },
+                                onRequestMove = { moveTodoTarget = todo },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = tween(durationMillis = 180),
+                                    placementSpec = spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    fadeOutSpec = tween(durationMillis = 160),
+                                ),
                             )
-                        },
-                        onAddSubtask = {
-                            sheetMode = TodoSheetMode.AddSubtask
-                            sheetParentTodo = todo
-                            sheetText = ""
-                            sheetMeta = if (settings.enableTasksPluginSupport) {
-                                MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
-                            } else {
-                                MarkdownParser.TasksMeta()
-                            }
-                        },
-                        onRequestDelete = {
-                            deleteTodoTarget = todo
-                            deleteTodoHasSubtasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex)
-                        },
-                        onRequestMove = { moveTodoTarget = todo },
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(durationMillis = 180),
-                            placementSpec = spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                            ),
-                            fadeOutSpec = tween(durationMillis = 160),
-                        ),
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        item { Spacer(modifier = Modifier.height(96.dp)) }
+                        return@LazyColumn
+                    }
+
+                    if (sortedActiveTodos.isNotEmpty()) {
+                        item { TodosianSectionHeader(text = stringResource(R.string.category_active)) }
+                        items(
+                            items = sortedActiveTodos,
+                            key = { it.id },
+                        ) { todo ->
+                            TodoRow(
+                                todo = todo,
+                                enableTasksPluginSupport = settings.enableTasksPluginSupport,
+                                useEmojisInUi = settings.tasksPluginUseEmojisInUi,
+                                showSubtaskButton = settings.enableSubtasks,
+                                onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
+                                onEdit = {
+                                    sheetMode = TodoSheetMode.Edit(todo)
+                                    sheetText = todo.text
+                                    sheetMeta = MarkdownParser.TasksMeta(
+                                        dueDate = todo.dueDate,
+                                        startDate = todo.startDate,
+                                        scheduledDate = todo.scheduledDate,
+                                        completionDate = todo.completionDate,
+                                        createdDate = todo.createdDate,
+                                        priority = todo.priority,
+                                        recurrence = todo.recurrence,
+                                    )
+                                },
+                                onAddSubtask = {
+                                    sheetMode = TodoSheetMode.AddSubtask
+                                    sheetParentTodo = todo
+                                    sheetText = ""
+                                    sheetMeta = if (settings.enableTasksPluginSupport) {
+                                        MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
+                                    } else {
+                                        MarkdownParser.TasksMeta()
+                                    }
+                                },
+                                onRequestDelete = {
+                                    deleteTodoTarget = todo
+                                    deleteTodoHasSubtasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex)
+                                },
+                                onRequestMove = { moveTodoTarget = todo },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = tween(durationMillis = 180),
+                                    placementSpec = spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    fadeOutSpec = tween(durationMillis = 160),
+                                ),
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+
+                    if (sortedCompletedTodos.isNotEmpty()) {
+                        item { TodosianSectionHeader(text = stringResource(R.string.category_completed)) }
+                        items(
+                            items = sortedCompletedTodos,
+                            key = { it.id },
+                        ) { todo ->
+                            TodoRow(
+                                todo = todo,
+                                enableTasksPluginSupport = settings.enableTasksPluginSupport,
+                                useEmojisInUi = settings.tasksPluginUseEmojisInUi,
+                                showSubtaskButton = settings.enableSubtasks,
+                                onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
+                                onEdit = {
+                                    sheetMode = TodoSheetMode.Edit(todo)
+                                    sheetText = todo.text
+                                    sheetMeta = MarkdownParser.TasksMeta(
+                                        dueDate = todo.dueDate,
+                                        startDate = todo.startDate,
+                                        scheduledDate = todo.scheduledDate,
+                                        completionDate = todo.completionDate,
+                                        createdDate = todo.createdDate,
+                                        priority = todo.priority,
+                                        recurrence = todo.recurrence,
+                                    )
+                                },
+                                onAddSubtask = {
+                                    sheetMode = TodoSheetMode.AddSubtask
+                                    sheetParentTodo = todo
+                                    sheetText = ""
+                                    sheetMeta = if (settings.enableTasksPluginSupport) {
+                                        MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
+                                    } else {
+                                        MarkdownParser.TasksMeta()
+                                    }
+                                },
+                                onRequestDelete = {
+                                    deleteTodoTarget = todo
+                                    deleteTodoHasSubtasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex)
+                                },
+                                onRequestMove = { moveTodoTarget = todo },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = tween(durationMillis = 180),
+                                    placementSpec = spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    fadeOutSpec = tween(durationMillis = 160),
+                                ),
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+
+                    item { Spacer(modifier = Modifier.height(96.dp)) }
                 }
             }
-
-            if (sortedCompletedTodos.isNotEmpty()) {
-                item { TodosianSectionHeader(text = stringResource(R.string.category_completed)) }
-                items(
-                    items = sortedCompletedTodos,
-                    key = { it.id },
-                ) { todo ->
-                    TodoRow(
-                        todo = todo,
-                        enableTasksPluginSupport = settings.enableTasksPluginSupport,
-                        useEmojisInUi = settings.tasksPluginUseEmojisInUi,
-                        showSubtaskButton = settings.enableSubtasks,
-                        onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
-                        onEdit = {
-                            sheetMode = TodoSheetMode.Edit(todo)
-                            sheetText = todo.text
-                            sheetMeta = MarkdownParser.TasksMeta(
-                                dueDate = todo.dueDate,
-                                startDate = todo.startDate,
-                                scheduledDate = todo.scheduledDate,
-                                completionDate = todo.completionDate,
-                                createdDate = todo.createdDate,
-                                priority = todo.priority,
-                                recurrence = todo.recurrence,
-                            )
-                        },
-                        onAddSubtask = {
-                            sheetMode = TodoSheetMode.AddSubtask
-                            sheetParentTodo = todo
-                            sheetText = ""
-                            sheetMeta = if (settings.enableTasksPluginSupport) {
-                                MarkdownParser.TasksMeta(createdDate = LocalDate.now().toString())
-                            } else {
-                                MarkdownParser.TasksMeta()
-                            }
-                        },
-                        onRequestDelete = {
-                            deleteTodoTarget = todo
-                            deleteTodoHasSubtasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex)
-                        },
-                        onRequestMove = { moveTodoTarget = todo },
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(durationMillis = 180),
-                            placementSpec = spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                            ),
-                            fadeOutSpec = tween(durationMillis = 160),
-                        ),
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-
-            item { Spacer(modifier = Modifier.height(96.dp)) }
         }
     }
 }

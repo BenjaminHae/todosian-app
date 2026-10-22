@@ -1,6 +1,7 @@
 package com.isotjs.todosian.ui.category
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,7 @@ import com.isotjs.todosian.R
 import com.isotjs.todosian.data.FileRepository
 import com.isotjs.todosian.data.model.Todo
 import com.isotjs.todosian.data.settings.AppSettingsRepository
+import com.isotjs.todosian.ui.components.awaitMinimumPullRefreshDuration
 import com.isotjs.todosian.utils.MarkdownParser
 import com.isotjs.todosian.utils.TaskMarkers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 data class CategoryUiState(
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val title: String = "",
     val activeTodos: List<Todo> = emptyList(),
     val completedTodos: List<Todo> = emptyList(),
@@ -76,37 +79,50 @@ class CategoryViewModel(
         }
     }
 
-    fun refreshFromDisk(showLoading: Boolean = false) {
+    fun refreshFromDisk(showLoading: Boolean = false, pullRefresh: Boolean = false) {
+        if (pullRefresh && _uiState.value.isRefreshing) return
         viewModelScope.launch {
-            val markers = currentMarkers()
-            if (showLoading) {
-                _uiState.value = _uiState.value.copy(isLoading = true)
+            val startedAt = SystemClock.elapsedRealtime()
+            if (pullRefresh) {
+                _uiState.value = _uiState.value.copy(isRefreshing = true)
             }
+            try {
+                val markers = currentMarkers()
+                if (showLoading) {
+                    _uiState.value = _uiState.value.copy(isLoading = true)
+                }
 
-            val nameResult = fileRepository.getDisplayName(categoryUri)
-            val title = nameResult.getOrNull()?.removeSuffix(".md").orEmpty()
+                val nameResult = fileRepository.getDisplayName(categoryUri)
+                val title = nameResult.getOrNull()?.removeSuffix(".md").orEmpty()
 
-            val linesResult = fileRepository.readLines(categoryUri)
-            if (linesResult.isFailure) {
-                _events.emit(Event.ShowMessage(R.string.error_read_failed))
-                _uiState.value = _uiState.value.copy(isLoading = false, title = title)
-                return@launch
+                val linesResult = fileRepository.readLines(categoryUri)
+                if (linesResult.isFailure) {
+                    _events.emit(Event.ShowMessage(R.string.error_read_failed))
+                    _uiState.value = _uiState.value.copy(isLoading = false, title = title)
+                    return@launch
+                }
+
+                val lines = linesResult.getOrThrow()
+                if (!showLoading && lines == _uiState.value.lines) return@launch
+
+                val todos = MarkdownParser.parse(lines, markers)
+                val (completed, active) = todos.partition { it.isDone }
+
+                _uiState.value = CategoryUiState(
+                    isLoading = false,
+                    isRefreshing = _uiState.value.isRefreshing,
+                    title = title,
+                    activeTodos = active.sortedBy { it.lineIndex },
+                    completedTodos = completed.sortedBy { it.lineIndex },
+                    lines = lines,
+                    moveTargets = _uiState.value.moveTargets,
+                )
+            } finally {
+                if (pullRefresh) {
+                    awaitMinimumPullRefreshDuration(startedAt)
+                    _uiState.value = _uiState.value.copy(isRefreshing = false)
+                }
             }
-
-            val lines = linesResult.getOrThrow()
-            if (!showLoading && lines == _uiState.value.lines) return@launch
-
-            val todos = MarkdownParser.parse(lines, markers)
-            val (completed, active) = todos.partition { it.isDone }
-
-            _uiState.value = CategoryUiState(
-                isLoading = false,
-                title = title,
-                activeTodos = active.sortedBy { it.lineIndex },
-                completedTodos = completed.sortedBy { it.lineIndex },
-                lines = lines,
-                moveTargets = _uiState.value.moveTargets,
-            )
         }
     }
 

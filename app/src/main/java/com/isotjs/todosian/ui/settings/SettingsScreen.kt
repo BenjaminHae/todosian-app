@@ -833,8 +833,6 @@ private fun TaskMarkersSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // Keep the sheet off the full screen height so a scroll gesture scrolls the
-                // content instead of dragging the sheet (which made the fields flicker).
                 .fillMaxHeight(0.75f)
                 .windowInsetsPadding(WindowInsets.ime)
                 .verticalScroll(rememberScrollState())

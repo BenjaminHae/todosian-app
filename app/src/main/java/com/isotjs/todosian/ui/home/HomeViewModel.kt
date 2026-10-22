@@ -1,6 +1,7 @@
 package com.isotjs.todosian.ui.home
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,7 @@ import com.isotjs.todosian.R
 import com.isotjs.todosian.data.FileRepository
 import com.isotjs.todosian.data.model.Category
 import com.isotjs.todosian.data.settings.AppSettingsRepository
+import com.isotjs.todosian.ui.components.awaitMinimumPullRefreshDuration
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +20,7 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val categories: List<Category> = emptyList(),
 ) {
     fun remainingFor(mode: com.isotjs.todosian.data.settings.DailyFocusMode): Int {
@@ -44,33 +47,46 @@ class HomeViewModel(
         refresh()
     }
 
-    fun refresh(showLoading: Boolean = true) {
+    fun refresh(showLoading: Boolean = true, showRefreshing: Boolean = false) {
+        if (showRefreshing && _uiState.value.isRefreshing) return
         viewModelScope.launch {
-            val folderUri = fileRepository.getFolderUri()
-            if (folderUri == null) {
-                _events.emit(Event.RequireOnboarding)
-                _uiState.value = HomeUiState(isLoading = false)
-                return@launch
+            val startedAt = SystemClock.elapsedRealtime()
+            if (showRefreshing) {
+                _uiState.value = _uiState.value.copy(isRefreshing = true)
             }
+            try {
+                val folderUri = fileRepository.getFolderUri()
+                if (folderUri == null) {
+                    _events.emit(Event.RequireOnboarding)
+                    _uiState.value = HomeUiState(isLoading = false)
+                    return@launch
+                }
 
-            val shouldShowLoading = showLoading || _uiState.value.categories.isEmpty()
-            if (shouldShowLoading) {
-                _uiState.value = _uiState.value.copy(isLoading = true)
-            }
-            val markers = appSettingsRepository.settings.first().toTaskMarkers()
-            val result = fileRepository.getCategories(markers)
-            if (result.isFailure) {
-                fileRepository.clearFolderUri()
-                _events.emit(Event.ShowMessage(R.string.error_folder_invalid))
-                _events.emit(Event.RequireOnboarding)
-                _uiState.value = HomeUiState(isLoading = false)
-                return@launch
-            }
+                val shouldShowLoading =
+                    !showRefreshing && (showLoading || _uiState.value.categories.isEmpty())
+                if (shouldShowLoading) {
+                    _uiState.value = _uiState.value.copy(isLoading = true)
+                }
+                val markers = appSettingsRepository.settings.first().toTaskMarkers()
+                val result = fileRepository.getCategories(markers)
+                if (result.isFailure) {
+                    fileRepository.clearFolderUri()
+                    _events.emit(Event.ShowMessage(R.string.error_folder_invalid))
+                    _events.emit(Event.RequireOnboarding)
+                    _uiState.value = HomeUiState(isLoading = false)
+                    return@launch
+                }
 
-            _uiState.value = HomeUiState(
-                isLoading = false,
-                categories = result.getOrThrow(),
-            )
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    categories = result.getOrThrow(),
+                )
+            } finally {
+                if (showRefreshing) {
+                    awaitMinimumPullRefreshDuration(startedAt)
+                    _uiState.value = _uiState.value.copy(isRefreshing = false)
+                }
+            }
         }
     }
 
