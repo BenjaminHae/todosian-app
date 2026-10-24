@@ -146,12 +146,20 @@ fun CategoryScreen(
     var deleteTodoHasSubtasks by remember { mutableStateOf(false) }
     var moveTodoTarget by remember { mutableStateOf<Todo?>(null) }
     var showCopyOption by remember { mutableStateOf(false) }
-    var collapsedLineIndices by remember { mutableStateOf<Set<Int>>(HashSet()) }
+    var collapsedTodoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    fun toggleCollapse(lineIndex: Int) {
-        val updated = collapsedLineIndices.toMutableSet()
-        if (!updated.remove(lineIndex)) updated.add(lineIndex)
-        collapsedLineIndices = updated
+    fun toggleCollapse(todoId: String) {
+        val updated = collapsedTodoIds.toMutableSet()
+        if (!updated.remove(todoId)) updated.add(todoId)
+        collapsedTodoIds = updated
+    }
+
+    LaunchedEffect(uiState.activeTodos, uiState.completedTodos) {
+        val knownIds = (uiState.activeTodos + uiState.completedTodos)
+            .mapTo(HashSet()) { it.id }
+        if (!knownIds.containsAll(collapsedTodoIds)) {
+            collapsedTodoIds = collapsedTodoIds.intersect(knownIds)
+        }
     }
 
     var autoOpenedAddTodo by remember { mutableStateOf(false) }
@@ -530,11 +538,11 @@ fun CategoryScreen(
                 val hiddenSubtaskIndices = remember(
                     uiState.activeTodos,
                     uiState.completedTodos,
-                    collapsedLineIndices,
+                    collapsedTodoIds,
                 ) {
                     MarkdownParser.hiddenSubtaskLineIndices(
                         todos = uiState.activeTodos + uiState.completedTodos,
-                        collapsedLineIndices = collapsedLineIndices,
+                        collapsedTodoIds = collapsedTodoIds,
                     )
                 }
                 val sortedActiveTodos = remember(
@@ -578,8 +586,8 @@ fun CategoryScreen(
                                 useEmojisInUi = settings.tasksPluginUseEmojisInUi,
                                 showSubtaskButton = settings.enableSubtasks,
                                 hasSubTasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex),
-                                isCollapsed = todo.lineIndex in collapsedLineIndices,
-                                onToggleCollapse = { toggleCollapse(todo.lineIndex) },
+                                isCollapsed = todo.id in collapsedTodoIds,
+                                onToggleCollapse = { toggleCollapse(todo.id) },
                                 onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
@@ -635,8 +643,8 @@ fun CategoryScreen(
                                 useEmojisInUi = settings.tasksPluginUseEmojisInUi,
                                 showSubtaskButton = settings.enableSubtasks,
                                 hasSubTasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex),
-                                isCollapsed = todo.lineIndex in collapsedLineIndices,
-                                onToggleCollapse = { toggleCollapse(todo.lineIndex) },
+                                isCollapsed = todo.id in collapsedTodoIds,
+                                onToggleCollapse = { toggleCollapse(todo.id) },
                                 onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
@@ -690,8 +698,8 @@ fun CategoryScreen(
                                 useEmojisInUi = settings.tasksPluginUseEmojisInUi,
                                 showSubtaskButton = settings.enableSubtasks,
                                 hasSubTasks = MarkdownParser.hasSubtasks(uiState.lines, todo.lineIndex),
-                                isCollapsed = todo.lineIndex in collapsedLineIndices,
-                                onToggleCollapse = { toggleCollapse(todo.lineIndex) },
+                                isCollapsed = todo.id in collapsedTodoIds,
+                                onToggleCollapse = { toggleCollapse(todo.id) },
                                 onToggle = { viewModel.toggleTodo(todo, settings.enableTasksPluginSupport) },
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)

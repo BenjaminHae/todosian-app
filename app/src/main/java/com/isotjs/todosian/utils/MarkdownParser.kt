@@ -3,7 +3,6 @@ package com.isotjs.todosian.utils
 import com.isotjs.todosian.data.model.TasksPriority
 import com.isotjs.todosian.data.model.Todo
 import java.time.LocalDate
-import java.util.UUID
 
 data class TaskMarkers(
     val created: String = "➕",
@@ -35,6 +34,8 @@ object MarkdownParser {
     private fun isTodoLine(line: String): Boolean = todoRegex.matches(line)
 
     fun parse(lines: List<String>, markers: TaskMarkers = TaskMarkers.Default): List<Todo> {
+        val idOccurrences = HashMap<String, Int>()
+
         return lines.mapIndexedNotNull { index, line ->
             val match = todoRegex.matchEntire(line) ?: return@mapIndexedNotNull null
             val indentPrefix = match.groupValues[1]
@@ -42,12 +43,21 @@ object MarkdownParser {
             val remainder = match.groupValues[3]
 
             val parsed = parseRemainder(remainder, markers)
+            val todoIndentLevel = indentLevel(indentPrefix)
+            val baseId = stableTodoId(
+                indentLevel = todoIndentLevel,
+                text = parsed.mainText,
+                meta = parsed.meta,
+            )
+            val occurrence = idOccurrences.getOrDefault(baseId, 0)
+            idOccurrences[baseId] = occurrence + 1
+
             Todo(
-                id = UUID.randomUUID().toString(),
+                id = if (occurrence == 0) baseId else "$baseId\u001F$occurrence",
                 text = parsed.mainText,
                 isDone = isDone,
                 lineIndex = index,
-                indentLevel = indentLevel(indentPrefix),
+                indentLevel = todoIndentLevel,
                 dueDate = parsed.meta.dueDate,
                 startDate = parsed.meta.startDate,
                 scheduledDate = parsed.meta.scheduledDate,
@@ -114,9 +124,11 @@ object MarkdownParser {
 
     /**
      * Toggles a todo line and, when the todo is being marked as completed, also marks all of its
-     * sub-todos (the following lines with a greater indent) as completed. Sub-todos that are
-     * already completed are left untouched, including their metadata. Re-opening a todo never
-     * touches its sub-todos.
+     * sub-todos as completed. The todo's block includes indented non-todo lines (for example
+     * notes) and interior blank lines, so those do not stop the cascade. The block ends at the
+     * first non-blank line with the same or a lower indentation. Sub-todos that are already
+     * completed are left untouched, including their metadata. Re-opening a todo never touches
+     * its sub-todos.
      */
     fun toggleLineWithSubtasks(
         lines: List<String>,
@@ -132,23 +144,16 @@ object MarkdownParser {
         val parentIndent = indentLevel(match.groupValues[1])
         val isDone = match.groupValues[2] == "x"
 
-        var endIndex = lineIndex + 1
-        while (endIndex < lines.size) {
-            val nextLine = lines[endIndex]
-            val nextMatch = todoRegex.matchEntire(nextLine) ?: break
-            if (indentLevel(nextMatch.groupValues[1]) > parentIndent) {
-                endIndex++
-            } else {
-                break
-            }
-        }
+        val endIndex = blockContentEndIndex(lines, lineIndex, parentIndent)
 
         val updatedLines = lines.toMutableList()
         updatedLines[lineIndex] = toggledLine(updatedLines[lineIndex], enableTasksPlugin, today, markers)
 
         if (!isDone) {
             for (i in lineIndex + 1 until endIndex) {
-                updatedLines[i] = setLineDone(updatedLines[i], enableTasksPlugin, today, markers)
+                if (isTodoLine(updatedLines[i])) {
+                    updatedLines[i] = setLineDone(updatedLines[i], enableTasksPlugin, today, markers)
+                }
             }
         }
 
@@ -176,14 +181,15 @@ object MarkdownParser {
 
     /**
      * Computes the line indices of all todos that are sub-todos of a collapsed todo. A todo is
-     * considered collapsed when its 0-based line index is contained in [collapsedLineIndices].
-     * Descendants of hidden sub-todos are counted as hidden as well.
+     * considered collapsed when its stable [Todo.id] is contained in [collapsedTodoIds]. Stable
+     * ids survive external file edits that shift line indices. Descendants of hidden sub-todos
+     * are counted as hidden as well.
      */
     fun hiddenSubtaskLineIndices(
         todos: List<Todo>,
-        collapsedLineIndices: Set<Int>,
+        collapsedTodoIds: Set<String>,
     ): Set<Int> {
-        if (collapsedLineIndices.isEmpty() || todos.isEmpty()) return emptySet()
+        if (collapsedTodoIds.isEmpty() || todos.isEmpty()) return emptySet()
 
         val ordered = todos.sortedBy { it.lineIndex }
         val hiddenLineIndices = HashSet<Int>()
@@ -203,7 +209,7 @@ object MarkdownParser {
             }
 
             val isHidden = ancestor != null && (
-                ancestor.lineIndex in collapsedLineIndices ||
+                ancestor.id in collapsedTodoIds ||
                     ancestor.lineIndex in hiddenLineIndices
                 )
             if (isHidden) {
@@ -212,19 +218,6 @@ object MarkdownParser {
         }
 
         return hiddenLineIndices
-    }
-
-    /**
-     * Removes all todos that are sub-todos of a collapsed todo. A todo is considered collapsed
-     * when its 0-based line index is contained in [collapsedLineIndices]. Descendants of hidden
-     * sub-todos are hidden as well. The input order of [todos] is preserved.
-     */
-    fun filterHiddenSubtasks(
-        todos: List<Todo>,
-        collapsedLineIndices: Set<Int>,
-    ): List<Todo> {
-        val hiddenLineIndices = hiddenSubtaskLineIndices(todos, collapsedLineIndices)
-        return todos.filterNot { it.lineIndex in hiddenLineIndices }
     }
 
     fun addTodo(
@@ -603,6 +596,56 @@ object MarkdownParser {
         }
         return (width / 2).coerceAtLeast(0)
     }
+
+    private fun leadingWhitespace(line: String): String {
+        var end = 0
+        while (end < line.length && (line[end] == ' ' || line[end] == '\t')) end++
+        return line.substring(0, end)
+    }
+
+    private fun lineIndent(line: String): Int = indentLevel(leadingWhitespace(line))
+
+    /**
+     * Returns the index of the first line after [startIndex] that is not part of the todo's
+     * block (exclusive end). The block contains all non-blank lines deeper than [parentIndent],
+     * notes and other non-todo content included, while interior blank lines are skipped.
+     * A non-blank line at the same or a lower indentation ends the block.
+     */
+    private fun blockContentEndIndex(lines: List<String>, startIndex: Int, parentIndent: Int): Int {
+        var index = startIndex + 1
+        var lastContent = startIndex
+        while (index < lines.size) {
+            val nextLine = lines[index]
+            if (nextLine.isBlank()) {
+                index++
+                continue
+            }
+            if (lineIndent(nextLine) <= parentIndent) break
+            lastContent = index
+            index++
+        }
+        return lastContent + 1
+    }
+
+    /**
+     * Builds an id that is stable across reloads and independent of the todo's line number.
+     * The done state, completion date, and notes are deliberately excluded so that completing
+     * a todo does not change its identity. [parse] appends an occurrence suffix for duplicates.
+     */
+    private fun stableTodoId(
+        indentLevel: Int,
+        text: String,
+        meta: TasksMeta,
+    ): String = listOf(
+        indentLevel.toString(),
+        text,
+        meta.dueDate,
+        meta.startDate,
+        meta.scheduledDate,
+        meta.createdDate,
+        meta.priority?.name,
+        meta.recurrence,
+    ).joinToString(separator = "\u001F") { it ?: "" }
 
     private fun inferIndentUnit(prefix: String): String {
         return if (prefix.contains('\t')) "\t" else "  "
