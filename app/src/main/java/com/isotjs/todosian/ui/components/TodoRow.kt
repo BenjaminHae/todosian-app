@@ -213,7 +213,7 @@ fun TodoRow(
                     if (showNotes && todo.notes.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = todo.notes.map { it.trim() }.joinToString("\n"),
+                            text = MarkdownParser.notesToEditorText(todo.notes),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -37,19 +37,35 @@ object MarkdownParser {
         val idOccurrences = HashMap<String, Int>()
         val notesByTodoLineIndex = HashMap<Int, MutableList<String>>()
         val ownerStack = ArrayList<Int>()
-        var previousLineBlank = true
+        val pendingBlanks = ArrayList<String>()
+
+        fun attachPendingBlanks() {
+            if (pendingBlanks.isEmpty()) return
+            for (j in ownerStack.size - 1 downTo 0) {
+                val ownerNotes = notesByTodoLineIndex[ownerStack[j]]
+                if (ownerNotes != null && ownerNotes.isNotEmpty()) {
+                    ownerNotes.addAll(pendingBlanks)
+                    break
+                }
+            }
+            pendingBlanks.clear()
+        }
 
         for (index in lines.indices) {
             val line = lines[index]
             val match = todoRegex.matchEntire(line)
             if (match != null) {
+                attachPendingBlanks()
                 val indent = indentLevel(match.groupValues[1])
                 while (ownerStack.isNotEmpty() && lineIndent(lines[ownerStack[ownerStack.size - 1]]) >= indent) {
                     ownerStack.removeAt(ownerStack.size - 1)
                 }
                 ownerStack.add(index)
-            } else if (line.trim().isNotEmpty() && !previousLineBlank) {
+            } else if (line.isBlank()) {
+                pendingBlanks.add(line)
+            } else {
                 val indent = lineIndent(line)
+                var attached = false
                 for (j in ownerStack.size - 1 downTo 0) {
                     if (lineIndent(lines[ownerStack[j]]) < indent) {
                         var notes = notesByTodoLineIndex[ownerStack[j]]
@@ -57,13 +73,22 @@ object MarkdownParser {
                             notes = mutableListOf()
                             notesByTodoLineIndex[ownerStack[j]] = notes
                         }
+                        if (pendingBlanks.isNotEmpty() && notes.isNotEmpty()) {
+                            notes.addAll(pendingBlanks)
+                        }
                         notes.add(line)
+                        attached = true
                         break
                     }
                 }
+                if (attached) {
+                    pendingBlanks.clear()
+                } else {
+                    attachPendingBlanks()
+                }
             }
-            previousLineBlank = line.trim().isEmpty()
         }
+        attachPendingBlanks()
 
         return lines.mapIndexedNotNull { index, line ->
             val match = todoRegex.matchEntire(line) ?: return@mapIndexedNotNull null
@@ -325,8 +350,7 @@ object MarkdownParser {
         val match = todoRegex.matchEntire(line) ?: return null
         val parentIndent = indentLevel(match.groupValues[1])
 
-        val endIndex = blockContentEndIndex(lines, lineIndex, parentIndent)
-
+        val endIndex = blockEndIndex(lines, lineIndex, parentIndent)
         return lines.toMutableList().apply {
             subList(lineIndex, endIndex).clear()
         }
@@ -338,10 +362,16 @@ object MarkdownParser {
         val match = todoRegex.matchEntire(line) ?: return false
         val parentIndent = indentLevel(match.groupValues[1])
 
-        val endIndex = blockContentEndIndex(lines, lineIndex, parentIndent)
-        for (i in lineIndex + 1 until endIndex) {
-            val nextMatch = todoRegex.matchEntire(lines[i]) ?: continue
-            if (indentLevel(nextMatch.groupValues[1]) > parentIndent) return true
+        var i = lineIndex + 1
+        while (i < lines.size) {
+            val nextLine = lines[i]
+            if (nextLine.isBlank()) {
+                i++
+                continue
+            }
+            if (lineIndent(nextLine) <= parentIndent) return false
+            if (todoRegex.matches(nextLine)) return true
+            i++
         }
         return false
     }
@@ -389,9 +419,13 @@ object MarkdownParser {
 
     /**
      * Replaces the notes (indented non-todo lines) that belong to the todo at [lineIndex] with
-     * [newNotes]. Each new note line is indented one level deeper than the todo. Notes belonging
-     * to sub-todos are left untouched. When [newNotes] is empty, all notes of the todo are
-     * removed.
+     * the editor-form lines in [newNotes]. Editor-form lines are what the user sees in the note
+     * editor: relative indentation is preserved, but the note block's base indentation (and the
+     * indentation that anchors the block under the todo) is not part of the lines. Interior and
+     * trailing blank lines are preserved; whitespace-only lines are kept exactly as entered.
+     * A single leading blank line (a separator the user did not type as note content) is
+     * dropped. Notes belonging to sub-todos are left untouched. When [newNotes] contains no
+     * content, all notes of the todo are removed.
      */
     fun editTodoNotes(
         lines: List<String>,
@@ -405,31 +439,27 @@ object MarkdownParser {
         val indentPrefix = match.groupValues[1]
         val noteIndentPrefix = indentPrefix + inferIndentUnit(indentPrefix)
 
-        var endIndex = lineIndex + 1
-        while (endIndex < lines.size) {
-            val nextLine = lines[endIndex]
-            if (nextLine.trim().isEmpty()) break
-            if (lineIndent(nextLine) <= parentIndent) break
-            endIndex++
-        }
+        val cleanedNotes = stripBaseIndent(newNotes.dropWhile { it.isBlank() })
 
-        val noteIndices = ArrayList<Int>()
-        val existingNotes = ArrayList<String>()
+        val endIndex = blockEndIndex(lines, lineIndex, parentIndent)
+
+        val ownNoteIndices = ArrayList<Int>()
+        val subtaskTodoIndices = ArrayList<Int>()
         val stackIndents = mutableListOf(parentIndent)
         for (i in lineIndex + 1 until endIndex) {
             val currentLine = lines[i]
             val currentIndent = lineIndent(currentLine)
             if (todoRegex.matches(currentLine)) {
+                subtaskTodoIndices.add(i)
                 while (stackIndents.isNotEmpty() && stackIndents[stackIndents.size - 1] >= currentIndent) {
                     stackIndents.removeAt(stackIndents.size - 1)
                 }
                 stackIndents.add(currentIndent)
-            } else {
+            } else if (currentLine.isNotBlank()) {
                 for (j in stackIndents.size - 1 downTo 0) {
                     if (stackIndents[j] < currentIndent) {
                         if (j == 0) {
-                            noteIndices.add(i)
-                            existingNotes.add(currentLine.trim())
+                            ownNoteIndices.add(i)
                         }
                         break
                     }
@@ -437,16 +467,52 @@ object MarkdownParser {
             }
         }
 
-        val cleanedNotes = newNotes.map { it.trim() }.filterNot { it.isEmpty() }
-        if (noteIndices.isEmpty() && cleanedNotes.isEmpty()) return lines
-        if (existingNotes.joinToString("\n") == cleanedNotes.joinToString("\n")) return lines
+        val removableBlanks = ArrayList<Int>()
+        if (ownNoteIndices.isNotEmpty()) {
+            for (i in lineIndex + 1 until endIndex) {
+                if (!lines[i].isBlank()) continue
+                val prev = ownNoteIndices.lastOrNull { it < i }
+                val next = ownNoteIndices.firstOrNull { it > i }
+                if (prev == null || next == null) continue
+                if (subtaskTodoIndices.none { it > prev && it < next }) {
+                    removableBlanks.add(i)
+                }
+            }
+            var trailing = ownNoteIndices.last() + 1
+            while (trailing < endIndex && lines[trailing].isBlank()) {
+                removableBlanks.add(trailing)
+                trailing++
+            }
+        }
+
+        val noteIndices = (ownNoteIndices + removableBlanks).sorted()
+        if (noteIndices.isEmpty() && cleanedNotes.all { it.isBlank() }) return lines
+        val existingEditorForm = stripBaseIndent(noteIndices.map { lines[it] })
+        if (existingEditorForm == cleanedNotes) return lines
 
         val updatedLines = lines.toMutableList()
         for (i in noteIndices.size - 1 downTo 0) {
             updatedLines.removeAt(noteIndices[i])
         }
-        updatedLines.addAll(lineIndex + 1, cleanedNotes.map { "$noteIndentPrefix$it" })
+        updatedLines.addAll(lineIndex + 1, indentNotes(cleanedNotes, noteIndentPrefix))
         return updatedLines
+    }
+
+    /**
+     * Converts raw note lines (as parsed from a file) into the text shown in the note editor:
+     * the block's base indentation is stripped so nested content keeps its indentation relative
+     * to the first note line. Interior blank and whitespace-only lines are preserved.
+     */
+    fun notesToEditorText(notes: List<String>): String = stripBaseIndent(notes).joinToString("\n")
+
+    /**
+     * Converts the text of the note editor into editor-form note lines: split on newlines,
+     * a single leading blank line dropped, and only the common base indentation stripped so
+     * nested content keeps its relative indentation. Interior and trailing blank and
+     * whitespace-only lines are preserved so the editor text round-trips losslessly.
+     */
+    fun editorTextToNotes(text: String): List<String> {
+        return stripBaseIndent(text.split("\n").dropWhile { it.isBlank() })
     }
 
     fun tryEditTodoNotes(
@@ -483,8 +549,7 @@ object MarkdownParser {
         val match = todoRegex.matchEntire(line) ?: return null
         val parentIndent = indentLevel(match.groupValues[1])
 
-        val endIndex = blockContentEndIndex(sourceLines, lineIndex, parentIndent)
-
+        val endIndex = blockEndIndex(sourceLines, lineIndex, parentIndent)
         val block = sourceLines.subList(lineIndex, endIndex)
         val newSourceLines = sourceLines.toMutableList().apply {
             subList(lineIndex, endIndex).clear()
@@ -722,6 +787,73 @@ object MarkdownParser {
         meta.priority?.name,
         meta.recurrence,
     ).joinToString(separator = "\u001F") { it ?: "" }
+
+    private fun leadingWhitespaceLength(line: String): Int = leadingWhitespace(line).length
+
+    /**
+     * Returns the index of the first line after [startIndex] that is not part of the todo's
+     * block (exclusive end). A block contains all non-blank lines deeper than [parentIndent],
+     * any blank lines that are interior to them, and any blank lines that trail the block's
+     * content (they belong to the todo's note text and survive an editor round-trip). Leading
+     * blank lines are excluded, and a block with no content never absorbs following blanks so
+     * the blank separator between a plain task and the next one is kept.
+     */
+    private fun blockEndIndex(lines: List<String>, startIndex: Int, parentIndent: Int): Int {
+        var index = startIndex + 1
+        var lastContent = startIndex
+        while (index < lines.size) {
+            val nextLine = lines[index]
+            if (nextLine.isBlank()) {
+                index++
+                continue
+            }
+            if (lineIndent(nextLine) <= parentIndent) break
+            lastContent = index
+            index++
+        }
+        var end = lastContent + 1
+        if (lastContent > startIndex) {
+            while (end < lines.size && lines[end].isBlank()) end++
+        }
+        return end
+    }
+
+    /**
+     * Removes the minimum indentation shared by all non-blank lines. Blank and whitespace-only
+     * lines are kept exactly as they are, so they survive an edit round-trip byte-for-byte.
+     */
+    private fun stripBaseIndent(lines: List<String>): List<String> {
+        var base = Int.MAX_VALUE
+        for (line in lines) {
+            if (line.isBlank()) continue
+            base = minOf(base, leadingWhitespaceLength(line))
+        }
+        if (base == Int.MAX_VALUE) base = 0
+        if (base == 0) return lines
+        return lines.map { line ->
+            if (line.isBlank()) {
+                line
+            } else {
+                var end = 0
+                while (end < line.length && end < base && (line[end] == ' ' || line[end] == '\t')) end++
+                line.substring(end)
+            }
+        }
+    }
+
+    /**
+     * Anchors editor-form note lines under the todo: content lines keep their relative
+     * indentation and get the note block's base prefix; whitespace-only lines are preserved
+     * exactly; empty lines stay empty.
+     */
+    private fun indentNotes(notes: List<String>, noteIndentPrefix: String): List<String> =
+        notes.map { line ->
+            when {
+                line.isEmpty() -> ""
+                line.isBlank() -> line
+                else -> noteIndentPrefix + line
+            }
+        }
 
     private fun inferIndentUnit(prefix: String): String {
         return if (prefix.contains('\t')) "\t" else "  "

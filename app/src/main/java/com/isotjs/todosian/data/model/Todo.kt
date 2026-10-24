@@ -27,7 +27,9 @@ data class Todo(
     val lineIndex: Int,
     val indentLevel: Int = 0,
 
-    // Indented non-todo lines that belong to this todo (raw lines, indentation preserved)
+    // Indented non-todo lines that belong to this todo. Raw lines with their original
+    // indentation; interior and trailing blank lines plus whitespace-only lines are
+    // preserved as-is so note text round-trips losslessly.
     val notes: List<String> = emptyList(),
 
     // Obsidian Tasks plugin metadata (Tasks Emoji Format)
