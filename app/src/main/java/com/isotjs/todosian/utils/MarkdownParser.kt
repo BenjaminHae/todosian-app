@@ -284,17 +284,7 @@ object MarkdownParser {
             markers = markers,
         )
 
-        var insertIndex = parentLineIndex + 1
-        while (insertIndex < lines.size) {
-            val nextLine = lines[insertIndex]
-            val nextMatch = todoRegex.matchEntire(nextLine) ?: break
-            val nextIndent = nextMatch.groupValues[1]
-            if (indentLevel(nextIndent) > parentIndentLevel) {
-                insertIndex++
-            } else {
-                break
-            }
-        }
+        val insertIndex = blockContentEndIndex(lines, parentLineIndex, parentIndentLevel)
 
         return lines.toMutableList().apply { add(insertIndex, newLine) }
     }
@@ -305,17 +295,7 @@ object MarkdownParser {
         val match = todoRegex.matchEntire(line) ?: return null
         val parentIndent = indentLevel(match.groupValues[1])
 
-        var endIndex = lineIndex + 1
-        while (endIndex < lines.size) {
-            val nextLine = lines[endIndex]
-            val nextMatch = todoRegex.matchEntire(nextLine) ?: break
-            val nextIndent = indentLevel(nextMatch.groupValues[1])
-            if (nextIndent > parentIndent) {
-                endIndex++
-            } else {
-                break
-            }
-        }
+        val endIndex = blockContentEndIndex(lines, lineIndex, parentIndent)
 
         return lines.toMutableList().apply {
             subList(lineIndex, endIndex).clear()
@@ -328,12 +308,12 @@ object MarkdownParser {
         val match = todoRegex.matchEntire(line) ?: return false
         val parentIndent = indentLevel(match.groupValues[1])
 
-        val nextIndex = lineIndex + 1
-        if (nextIndex !in lines.indices) return false
-        val nextLine = lines[nextIndex]
-        val nextMatch = todoRegex.matchEntire(nextLine) ?: return false
-        val nextIndent = indentLevel(nextMatch.groupValues[1])
-        return nextIndent > parentIndent
+        val endIndex = blockContentEndIndex(lines, lineIndex, parentIndent)
+        for (i in lineIndex + 1 until endIndex) {
+            val nextMatch = todoRegex.matchEntire(lines[i]) ?: continue
+            if (indentLevel(nextMatch.groupValues[1]) > parentIndent) return true
+        }
+        return false
     }
 
     fun editTodoText(
@@ -400,17 +380,7 @@ object MarkdownParser {
         val match = todoRegex.matchEntire(line) ?: return null
         val parentIndent = indentLevel(match.groupValues[1])
 
-        var endIndex = lineIndex + 1
-        while (endIndex < sourceLines.size) {
-            val nextLine = sourceLines[endIndex]
-            val nextMatch = todoRegex.matchEntire(nextLine) ?: break
-            val nextIndent = indentLevel(nextMatch.groupValues[1])
-            if (nextIndent > parentIndent) {
-                endIndex++
-            } else {
-                break
-            }
-        }
+        val endIndex = blockContentEndIndex(sourceLines, lineIndex, parentIndent)
 
         val block = sourceLines.subList(lineIndex, endIndex)
         val newSourceLines = sourceLines.toMutableList().apply {

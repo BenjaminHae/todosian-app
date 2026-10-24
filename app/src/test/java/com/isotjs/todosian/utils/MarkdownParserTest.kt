@@ -413,6 +413,71 @@ class MarkdownParserTest {
         assertEquals(true, MarkdownParser.hasSubtasks(lines, lineIndex = 0))
         assertEquals(false, MarkdownParser.hasSubtasks(lines, lineIndex = 1))
     }
+
+    @Test
+    fun hasSubtasks_finds_subtasks_after_notes_and_blank_lines() {
+        val lines = listOf(
+            "- [ ] Parent",
+            "  A note for the parent",
+            "",
+            "  - [ ] Child",
+        )
+
+        assertEquals(true, MarkdownParser.hasSubtasks(lines, lineIndex = 0))
+    }
+
+    @Test
+    fun hasSubtasks_returns_false_when_block_contains_only_notes() {
+        val lines = listOf(
+            "- [ ] Parent",
+            "  A note for the parent",
+            "- [ ] Sibling",
+        )
+
+        assertEquals(false, MarkdownParser.hasSubtasks(lines, lineIndex = 0))
+    }
+
+    @Test
+    fun addSubTodo_inserts_after_notes_and_existing_subtasks() {
+        val lines = listOf(
+            "- [ ] Parent",
+            "  A note for the parent",
+            "  - [ ] Child",
+            "- [ ] Sibling",
+        )
+
+        val updated = MarkdownParser.addSubTodo(
+            lines = lines,
+            parentLineIndex = 0,
+            text = "New child",
+        ) ?: error("Expected subtask insert")
+
+        assertEquals(
+            listOf(
+                "- [ ] Parent",
+                "  A note for the parent",
+                "  - [ ] Child",
+                "  - [ ] New child",
+                "- [ ] Sibling",
+            ),
+            updated,
+        )
+    }
+
+    @Test
+    fun tryDeleteTodoWithSubtasks_removes_notes_and_subtasks() {
+        val lines = listOf(
+            "- [ ] Parent",
+            "  A note for the parent",
+            "  - [ ] Child",
+            "- [ ] Sibling",
+        )
+
+        val updated = MarkdownParser.tryDeleteTodoWithSubtasks(lines, lineIndex = 0)
+            ?: error("Expected delete to succeed")
+
+        assertEquals(listOf("- [ ] Sibling"), updated)
+    }
     
     @Test
     fun toggleLineWithSubtasks_recurring_daily_inserts_new_open_task_above() {
