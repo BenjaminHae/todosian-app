@@ -324,7 +324,7 @@ fun DailyFocusScreen(
                         onEdit = {
                             sheetMode = TodoSheetMode.Edit(task.todo)
                             sheetText = task.todo.text
-                            sheetNotes = task.todo.notes.map { it.trim() }.joinToString("\n")
+                            sheetNotes = MarkdownParser.notesToEditorText(task.todo.notes)
                             sheetMeta = MarkdownParser.TasksMeta(
                                 dueDate = task.todo.dueDate,
                                 startDate = task.todo.startDate,

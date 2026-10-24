@@ -1064,7 +1064,7 @@ class MarkdownParserTest {
     }
 
     @Test
-    fun parse_blank_line_ends_note_block() {
+    fun parse_preserves_interior_blank_lines_in_notes() {
         val lines = listOf(
             "Intro paragraph",
             "",
@@ -1079,7 +1079,7 @@ class MarkdownParserTest {
         val todos = MarkdownParser.parse(lines)
 
         assertEquals(2, todos.size)
-        assertEquals(listOf("  note"), todos[0].notes)
+        assertEquals(listOf("  note", "", "  detached paragraph"), todos[0].notes)
         assertEquals("Subtask", todos[1].text)
         assertEquals(listOf("    subtask note"), todos[1].notes)
     }
@@ -1147,16 +1147,19 @@ class MarkdownParserTest {
     }
 
     @Test
-    fun editTodoNotes_ignores_blank_note_lines() {
+    fun editTodoNotes_preserves_interior_and_trailing_blank_lines() {
         val lines = listOf("- [ ] Task", "  old note")
 
         val result = MarkdownParser.editTodoNotes(
             lines = lines,
             lineIndex = 0,
-            newNotes = listOf("", "only content line"),
+            newNotes = listOf("", "first line", "", "second line", ""),
         )
 
-        assertEquals(listOf("- [ ] Task", "  only content line"), result)
+        assertEquals(
+            listOf("- [ ] Task", "  first line", "", "  second line", ""),
+            result,
+        )
     }
 
     @Test
@@ -1175,6 +1178,21 @@ class MarkdownParserTest {
         )
 
         assertEquals(lines, result)
+    }
+
+    @Test
+    fun deleteTodoWithSubtasks_removes_multiparagraph_notes() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  note",
+            "",
+            "  detached",
+            "- [ ] Next",
+        )
+
+        val result = MarkdownParser.tryDeleteTodoWithSubtasks(lines, 0)
+
+        assertEquals(listOf("- [ ] Next"), result)
     }
 
     @Test
@@ -1258,5 +1276,307 @@ class MarkdownParserTest {
             listOf("- [ ] Task", "  note", "  - [ ] New subtask"),
             result,
         )
+    }
+
+    @Test
+    fun addSubTodo_inserts_after_multiparagraph_notes() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  note one",
+            "",
+            "  note two",
+        )
+
+        val result = MarkdownParser.addSubTodo(lines, 0, "New subtask")
+
+        assertEquals(
+            listOf("- [ ] Task", "  note one", "", "  note two", "  - [ ] New subtask"),
+            result,
+        )
+    }
+
+    @Test
+    fun notesToEditorText_strips_only_base_indent() {
+        val notes = listOf(
+            "  Outer paragraph",
+            "    - nested list item",
+            "  ",
+            "  Last paragraph",
+        )
+
+        assertEquals(
+            "Outer paragraph\n  - nested list item\n  \nLast paragraph",
+            MarkdownParser.notesToEditorText(notes),
+        )
+    }
+
+    @Test
+    fun editorTextToNotes_keeps_relative_indent_blank_lines_and_trailing_blank() {
+        val text = "Outer paragraph\n  - nested list item\n  \nLast paragraph\n"
+
+        assertEquals(
+            listOf("Outer paragraph", "  - nested list item", "  ", "Last paragraph", ""),
+            MarkdownParser.editorTextToNotes(text),
+        )
+    }
+
+    @Test
+    fun parse_preserves_whitespace_only_lines_in_notes() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  para one",
+            "  ",
+            "  para two",
+        )
+
+        val todos = MarkdownParser.parse(lines)
+
+        assertEquals(listOf("  para one", "  ", "  para two"), todos[0].notes)
+    }
+
+    @Test
+    fun editTodoNotes_preserves_relative_indentation() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  Outer paragraph",
+            "  - inner list item",
+            "    - nested item",
+            "  ```",
+            "  code here",
+            "  ```",
+        )
+
+        val result = MarkdownParser.editTodoNotes(
+            lines = lines,
+            lineIndex = 0,
+            newNotes = listOf(
+                "Changed paragraph",
+                "- inner list item",
+                "  - nested item",
+                "```",
+                "code here",
+                "```",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "- [ ] Task",
+                "  Changed paragraph",
+                "  - inner list item",
+                "    - nested item",
+                "  ```",
+                "  code here",
+                "  ```",
+            ),
+            result,
+        )
+    }
+
+    @Test
+    fun editTodoNotes_is_noop_for_indented_notes() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  Outer paragraph",
+            "    - nested list item",
+            "  ```",
+            "  code here",
+            "  ```",
+        )
+
+        val result = MarkdownParser.editTodoNotes(
+            lines = lines,
+            lineIndex = 0,
+            newNotes = listOf(
+                "Outer paragraph",
+                "  - nested list item",
+                "```",
+                "code here",
+                "```",
+            ),
+        )
+
+        assertEquals(lines, result)
+    }
+
+    @Test
+    fun editTodoNotes_preserves_whitespace_only_lines() {
+        val lines = listOf("- [ ] Task", "  para one", "  ", "  para two")
+
+        val result = MarkdownParser.editTodoNotes(
+            lines = lines,
+            lineIndex = 0,
+            newNotes = listOf("changed", "  ", "para two"),
+        )
+
+        assertEquals(
+            listOf("- [ ] Task", "  changed", "  ", "  para two"),
+            result,
+        )
+    }
+
+    @Test
+    fun editTodoNotes_is_noop_when_whitespace_only_lines_unchanged() {
+        val lines = listOf("- [ ] Task", "  para one", "  ", "  para two")
+
+        val result = MarkdownParser.editTodoNotes(
+            lines = lines,
+            lineIndex = 0,
+            newNotes = listOf("para one", "  ", "para two"),
+        )
+
+        assertEquals(lines, result)
+    }
+
+    @Test
+    fun deleteTodoWithSubtasks_moves_trailing_note_blank_with_task() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  note",
+            "",
+            "- [ ] Next",
+        )
+
+        val result = MarkdownParser.tryDeleteTodoWithSubtasks(lines, 0)
+
+        assertEquals(listOf("- [ ] Next"), result)
+    }
+
+    @Test
+    fun deleteTodoWithSubtasks_keeps_blank_separator_when_task_has_no_notes() {
+        val lines = listOf(
+            "- [ ] Task",
+            "",
+            "- [ ] Next",
+        )
+
+        val result = MarkdownParser.tryDeleteTodoWithSubtasks(lines, 0)
+
+        assertEquals(listOf("", "- [ ] Next"), result)
+    }
+
+    @Test
+    fun moveTodoLine_moves_multiparagraph_notes() {
+        val source = listOf(
+            "- [ ] Task",
+            "  note one",
+            "",
+            "  note two",
+            "- [ ] Other",
+        )
+        val target = listOf("# Target")
+
+        val result = MarkdownParser.tryMoveTodoLine(
+            sourceLines = source,
+            lineIndex = 0,
+            targetLines = target,
+        )
+
+        val (newSource, newTarget) = result ?: error("Expected move to succeed")
+        assertEquals(listOf("- [ ] Other"), newSource)
+        assertEquals(listOf("# Target", "- [ ] Task", "  note one", "", "  note two"), newTarget)
+    }
+
+    @Test
+    fun hasSubtasks_detects_subtasks_across_blank_line() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  note",
+            "",
+            "  - [ ] Subtask",
+        )
+
+        assertEquals(true, MarkdownParser.hasSubtasks(lines, 0))
+    }
+
+    @Test
+    fun parse_edit_roundtrip_preserves_notes_byte_for_byte() {
+        val original = listOf(
+            "- [ ] Task",
+            "  Outer paragraph",
+            "    - nested list",
+            "  ",
+            "  ```",
+            "  code",
+            "  ```",
+            "- [ ] Other",
+        )
+
+        val todos = MarkdownParser.parse(original)
+        val editorText = MarkdownParser.notesToEditorText(todos[0].notes)
+        val edited = MarkdownParser.editTodoNotes(
+            lines = original,
+            lineIndex = 0,
+            newNotes = MarkdownParser.editorTextToNotes(editorText),
+        )
+
+        assertEquals(original, edited)
+    }
+
+    @Test
+    fun parse_preserves_trailing_blank_line_in_notes() {
+        val lines = listOf(
+            "- [ ] Task",
+            "  para one",
+            "",
+            "- [ ] Other",
+        )
+
+        val todos = MarkdownParser.parse(lines)
+
+        assertEquals(listOf("  para one", ""), todos[0].notes)
+        assertEquals("para one\n", MarkdownParser.notesToEditorText(todos[0].notes))
+    }
+
+    @Test
+    fun editTodoNotes_preserves_trailing_blank_line() {
+        val lines = listOf("- [ ] Task", "  old note")
+
+        val result = MarkdownParser.editTodoNotes(
+            lines = lines,
+            lineIndex = 0,
+            newNotes = listOf("para one", ""),
+        )
+
+        assertEquals(listOf("- [ ] Task", "  para one", ""), result)
+    }
+
+    @Test
+    fun editTodoNotes_is_noop_with_trailing_blank_line() {
+        val lines = listOf("- [ ] Task", "  para one", "", "- [ ] Other")
+
+        val result = MarkdownParser.editTodoNotes(
+            lines = lines,
+            lineIndex = 0,
+            newNotes = listOf("para one", ""),
+        )
+
+        assertEquals(lines, result)
+    }
+
+    @Test
+    fun editTodoNotes_drops_leading_blank_line() {
+        val lines = listOf("- [ ] Task", "  old note")
+
+        val result = MarkdownParser.editTodoNotes(
+            lines = lines,
+            lineIndex = 0,
+            newNotes = listOf("", "para one", "", "para two"),
+        )
+
+        assertEquals(listOf("- [ ] Task", "  para one", "", "  para two"), result)
+    }
+
+    @Test
+    fun trailing_blank_line_roundtrip_via_editor_helpers() {
+        val lines = listOf("- [ ] Task")
+
+        val editorText = "para one\n\npara two\n"
+        val notes = MarkdownParser.editorTextToNotes(editorText)
+        val saved = MarkdownParser.editTodoNotes(lines, 0, notes)
+        val reopened = MarkdownParser.notesToEditorText(MarkdownParser.parse(saved)[0].notes)
+
+        assertEquals(listOf("para one", "", "para two", ""), notes)
+        assertEquals(editorText, reopened)
     }
 }

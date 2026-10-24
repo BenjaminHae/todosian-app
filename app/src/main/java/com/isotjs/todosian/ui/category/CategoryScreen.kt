@@ -613,7 +613,7 @@ fun CategoryScreen(
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
                                     sheetText = todo.text
-                                    sheetNotes = todo.notes.map { it.trim() }.joinToString("\n")
+                                    sheetNotes = MarkdownParser.notesToEditorText(todo.notes)
                                     sheetMeta = MarkdownParser.TasksMeta(
                                         dueDate = todo.dueDate,
                                         startDate = todo.startDate,
@@ -673,7 +673,7 @@ fun CategoryScreen(
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
                                     sheetText = todo.text
-                                    sheetNotes = todo.notes.map { it.trim() }.joinToString("\n")
+                                    sheetNotes = MarkdownParser.notesToEditorText(todo.notes)
                                     sheetMeta = MarkdownParser.TasksMeta(
                                         dueDate = todo.dueDate,
                                         startDate = todo.startDate,
@@ -731,7 +731,7 @@ fun CategoryScreen(
                                 onEdit = {
                                     sheetMode = TodoSheetMode.Edit(todo)
                                     sheetText = todo.text
-                                    sheetNotes = todo.notes.map { it.trim() }.joinToString("\n")
+                                    sheetNotes = MarkdownParser.notesToEditorText(todo.notes)
                                     sheetMeta = MarkdownParser.TasksMeta(
                                         dueDate = todo.dueDate,
                                         startDate = todo.startDate,
