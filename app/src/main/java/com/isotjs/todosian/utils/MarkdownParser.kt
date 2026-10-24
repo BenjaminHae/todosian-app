@@ -80,7 +80,10 @@ object MarkdownParser {
 
         val line = lines[lineIndex]
         val match = todoRegex.matchEntire(line) ?: return lines
+        val indentPrefix = match.groupValues[1]
         val isDone = match.groupValues[2] == "x"
+        val remainder = match.groupValues[3]
+        val newMark = if (isDone) " " else "x"
 
         val todayStr = today.toString()
 
