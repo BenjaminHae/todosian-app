@@ -67,6 +67,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.isotjs.todosian.R
+import com.isotjs.todosian.data.CollapsedTodoRepository
 import com.isotjs.todosian.data.FileRepository
 import com.isotjs.todosian.data.model.Todo
 import com.isotjs.todosian.data.model.priorityRank
@@ -95,6 +96,7 @@ import java.time.LocalDate
 fun CategoryScreen(
     fileRepository: FileRepository,
     appSettingsRepository: AppSettingsRepository,
+    collapsedTodoRepository: CollapsedTodoRepository,
     categoryUri: Uri,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -146,19 +148,32 @@ fun CategoryScreen(
     var deleteTodoHasSubtasks by remember { mutableStateOf(false) }
     var moveTodoTarget by remember { mutableStateOf<Todo?>(null) }
     var showCopyOption by remember { mutableStateOf(false) }
-    var collapsedTodoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var collapsedTodoIds by remember(categoryUri, collapsedTodoRepository) {
+        mutableStateOf(collapsedTodoRepository.getCollapsedTodoIds(categoryUri))
+    }
 
     fun toggleCollapse(todoId: String) {
         val updated = collapsedTodoIds.toMutableSet()
         if (!updated.remove(todoId)) updated.add(todoId)
         collapsedTodoIds = updated
+        collapsedTodoRepository.setCollapsedTodoIds(categoryUri, updated)
     }
 
-    LaunchedEffect(uiState.activeTodos, uiState.completedTodos) {
+    LaunchedEffect(
+        uiState.isLoading,
+        uiState.activeTodos,
+        uiState.completedTodos,
+    ) {
+        // The initial state is empty while the note is still loading; pruning then would
+        // discard the persisted collapsed ids before the todos are available.
+        if (uiState.isLoading) return@LaunchedEffect
         val knownIds = (uiState.activeTodos + uiState.completedTodos)
             .mapTo(HashSet()) { it.id }
-        if (!knownIds.containsAll(collapsedTodoIds)) {
-            collapsedTodoIds = collapsedTodoIds.intersect(knownIds)
+        if (knownIds.isEmpty()) return@LaunchedEffect
+        val pruned = collapsedTodoIds.intersect(knownIds)
+        if (pruned != collapsedTodoIds) {
+            collapsedTodoIds = pruned
+            collapsedTodoRepository.setCollapsedTodoIds(categoryUri, pruned)
         }
     }
 
