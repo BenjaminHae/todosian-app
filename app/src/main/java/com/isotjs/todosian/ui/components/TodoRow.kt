@@ -163,7 +163,23 @@ fun TodoRow(
                             style = MaterialTheme.typography.bodyLarge,
                             textDecoration = if (todo.isDone) TextDecoration.LineThrough else TextDecoration.None,
                             color = textColor,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
+                        if (todo.subtaskCount > 0) {
+                            Text(
+                                text = stringResource(
+                                    R.string.subtask_progress_count,
+                                    todo.openSubtaskCount,
+                                    todo.subtaskCount,
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (todo.isDone) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                            )
+                        }
                     }
 
                     if (enableTasksPluginSupport) {

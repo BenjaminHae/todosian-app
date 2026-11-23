@@ -40,4 +40,10 @@ data class Todo(
     val createdDate: String? = null, // ➕ YYYY-MM-DD
     val priority: TasksPriority? = null,
     val recurrence: String? = null, // 🔁 <text>
+
+    // Derived during parsing: number of direct sub-todos and how many of them are still open.
+    // Direct means the nearest indentation level below this todo; deeper descendants are not
+    // included because they belong to the sub-todos' own counts.
+    val openSubtaskCount: Int = 0,
+    val subtaskCount: Int = 0,
 )

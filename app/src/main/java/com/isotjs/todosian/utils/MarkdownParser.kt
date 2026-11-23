@@ -90,7 +90,7 @@ object MarkdownParser {
         }
         attachPendingBlanks()
 
-        return lines.mapIndexedNotNull { index, line ->
+        val todos = lines.mapIndexedNotNull { index, line ->
             val match = todoRegex.matchEntire(line) ?: return@mapIndexedNotNull null
             val indentPrefix = match.groupValues[1]
             val isDone = match.groupValues[2] == "x"
@@ -121,6 +121,49 @@ object MarkdownParser {
                 priority = parsed.meta.priority,
                 recurrence = parsed.meta.recurrence,
             )
+        }
+        return withDirectSubtaskCounts(todos)
+    }
+
+    /**
+     * Fills [Todo.openSubtaskCount] and [Todo.subtaskCount] for every todo that has direct
+     * sub-todos. Todos are in file order, so the nearest preceding todo with a smaller indentation
+     * level is the parent. Deeper descendants are intentionally not counted; they roll up into
+     * their own direct parent instead.
+     */
+    private fun withDirectSubtaskCounts(todos: List<Todo>): List<Todo> {
+        if (todos.size < 2) return todos
+
+        val openCounts = IntArray(todos.size)
+        val totalCounts = IntArray(todos.size)
+        val parentStack = ArrayList<Int>()
+
+        todos.forEachIndexed { index, todo ->
+            while (parentStack.isNotEmpty() &&
+                todos[parentStack[parentStack.size - 1]].indentLevel >= todo.indentLevel
+            ) {
+                parentStack.removeAt(parentStack.size - 1)
+            }
+
+            if (parentStack.isNotEmpty()) {
+                val parentIndex = parentStack[parentStack.size - 1]
+                totalCounts[parentIndex]++
+                if (!todo.isDone) {
+                    openCounts[parentIndex]++
+                }
+            }
+            parentStack.add(index)
+        }
+
+        return todos.mapIndexed { index, todo ->
+            if (totalCounts[index] == 0) {
+                todo
+            } else {
+                todo.copy(
+                    openSubtaskCount = openCounts[index],
+                    subtaskCount = totalCounts[index],
+                )
+            }
         }
     }
 

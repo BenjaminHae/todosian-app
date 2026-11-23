@@ -109,6 +109,9 @@
     <string name="category_tasks_chip_done_label">%1$s</string>
     <string name="category_tasks_chip_recurrence_label">%1$s</string>
 
+    <!-- Subtask progress: open direct sub-tasks / total direct sub-tasks -->
+    <string name="subtask_progress_count">%1$d/%2$d</string>
+
     <!-- Common actions -->
     <string name="action_save">Save</string>
     <string name="action_cancel">Cancel</string>

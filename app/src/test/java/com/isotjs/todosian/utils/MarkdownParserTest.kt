@@ -60,6 +60,47 @@ class MarkdownParserTest {
     }
 
     @Test
+    fun parse_counts_only_direct_subtasks() {
+        val lines = listOf(
+            "- [ ] todo",
+            "  - [ ] sub-todo 1",
+            "  - [ ] sub-todo 2",
+            "    - [ ] sub-sub-todo",
+            "  - [x] sub-todo 3",
+        )
+
+        val todos = MarkdownParser.parse(lines)
+
+        assertEquals(2, todos[0].openSubtaskCount)
+        assertEquals(3, todos[0].subtaskCount)
+
+        assertEquals(1, todos[2].openSubtaskCount)
+        assertEquals(1, todos[2].subtaskCount)
+
+        assertEquals(0, todos[3].openSubtaskCount)
+        assertEquals(0, todos[3].subtaskCount)
+    }
+
+    @Test
+    fun parse_counts_completed_direct_subtasks_in_total_but_not_open() {
+        val lines = listOf(
+            "- [x] Parent",
+            "  - [x] Done child",
+            "  - [ ] Open child",
+            "- [ ] Leaf",
+        )
+
+        val todos = MarkdownParser.parse(lines)
+
+        assertEquals(1, todos[0].openSubtaskCount)
+        assertEquals(2, todos[0].subtaskCount)
+        assertEquals(0, todos[1].openSubtaskCount)
+        assertEquals(0, todos[1].subtaskCount)
+        assertEquals(0, todos[3].openSubtaskCount)
+        assertEquals(0, todos[3].subtaskCount)
+    }
+
+    @Test
     fun parse_keeps_ids_stable_when_external_edits_shift_lines() {
         val before = MarkdownParser.parse(listOf(
             "- [ ] Parent",
