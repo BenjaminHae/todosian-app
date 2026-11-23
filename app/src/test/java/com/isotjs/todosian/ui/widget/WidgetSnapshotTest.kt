@@ -15,19 +15,28 @@ class WidgetSnapshotTest {
         isDone: Boolean = false,
         lineIndex: Int = 0,
         dueDate: String? = null,
-    ) = Todo(id = "", text = text, isDone = isDone, lineIndex = lineIndex, dueDate = dueDate)
+        indentLevel: Int = 0,
+    ) = Todo(
+        id = "",
+        text = text,
+        isDone = isDone,
+        lineIndex = lineIndex,
+        indentLevel = indentLevel,
+        dueDate = dueDate,
+    )
 
     private fun item(
         text: String,
         isDone: Boolean = false,
         lineIndex: Int = 0,
         dueDate: String? = null,
+        indentLevel: Int = 0,
         categoryUri: String = "content://category",
         categoryName: String = "Inbox",
     ) = WidgetTaskItem(
         categoryUri = categoryUri,
         categoryName = categoryName,
-        todo = todo(text, isDone, lineIndex, dueDate),
+        todo = todo(text, isDone, lineIndex, dueDate, indentLevel),
     )
 
     @Test
@@ -298,5 +307,36 @@ class WidgetSnapshotTest {
     fun `filter of empty list stays empty regardless of the flag`() {
         assertEquals(emptyList<WidgetTaskItem>(), filterCompletedItems(emptyList(), showCompleted = false))
         assertEquals(emptyList<WidgetTaskItem>(), filterCompletedItems(emptyList(), showCompleted = true))
+    }
+
+    @Test
+    fun `top-level filter keeps all entries when disabled`() {
+        val items = listOf(
+            item("Parent", lineIndex = 0),
+            item("Child", lineIndex = 1, indentLevel = 1),
+        )
+
+        assertEquals(items, filterTopLevelItems(items, topLevelOnly = false))
+    }
+
+    @Test
+    fun `top-level filter drops nested entries when enabled`() {
+        val items = listOf(
+            item("Parent", lineIndex = 0),
+            item("Child", lineIndex = 1, indentLevel = 1),
+            item("Grandchild", lineIndex = 2, indentLevel = 2),
+            item("Sibling", lineIndex = 3),
+        )
+
+        assertEquals(
+            listOf(item("Parent", lineIndex = 0), item("Sibling", lineIndex = 3)),
+            filterTopLevelItems(items, topLevelOnly = true),
+        )
+    }
+
+    @Test
+    fun `top-level filter of empty list stays empty regardless of the flag`() {
+        assertEquals(emptyList<WidgetTaskItem>(), filterTopLevelItems(emptyList(), topLevelOnly = false))
+        assertEquals(emptyList<WidgetTaskItem>(), filterTopLevelItems(emptyList(), topLevelOnly = true))
     }
 }

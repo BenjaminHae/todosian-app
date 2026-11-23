@@ -32,6 +32,7 @@ internal val KEY_WIDGET_ITEM_COUNT = intPreferencesKey("widget_item_count")
 internal val KEY_SELECTED_CATEGORY_URI = stringPreferencesKey("selected_category_uri")
 internal val KEY_SELECTED_CATEGORY_NAME = stringPreferencesKey("selected_category_name")
 internal val KEY_SHOW_COMPLETED = booleanPreferencesKey("show_completed")
+internal val KEY_SHOW_ONLY_TOP_LEVEL = booleanPreferencesKey("show_only_top_level")
 private const val ITEM_KEY_PREFIX = "widget_item_"
 
 /**
@@ -41,6 +42,14 @@ internal fun filterCompletedItems(
     items: List<WidgetTaskItem>,
     showCompleted: Boolean,
 ): List<WidgetTaskItem> = if (showCompleted) items else items.filter { !it.todo.isDone }
+
+/**
+ * Drops nested entries when the widget is configured to show only top-level tasks.
+ */
+internal fun filterTopLevelItems(
+    items: List<WidgetTaskItem>,
+    topLevelOnly: Boolean,
+): List<WidgetTaskItem> = if (topLevelOnly) items.filter { it.todo.indentLevel == 0 } else items
 
 /**
  * Which note a widget instance is bound to. Null [categoryUri] means "All lists" (the unbound,
@@ -248,6 +257,7 @@ object WidgetRefresher {
             }
             val selections = widgetStates.map { WidgetSelection.from(it) }
             val showCompletedFlags = widgetStates.map { it[KEY_SHOW_COMPLETED] ?: true }
+            val topLevelOnlyFlags = widgetStates.map { it[KEY_SHOW_ONLY_TOP_LEVEL] ?: false }
 
             // Read each needed file exactly once per refresh, no matter how many widgets share it.
             val neededUris = buildList {
@@ -268,6 +278,7 @@ object WidgetRefresher {
                     linesByUri = linesByUri,
                     selection = selections[index],
                     showCompleted = showCompletedFlags[index],
+                    showOnlyTopLevel = topLevelOnlyFlags[index],
                     markers = markers,
                 )
                 runCatching {
@@ -292,7 +303,7 @@ object WidgetRefresher {
     /**
      * Builds the snapshot for one widget instance. For "All lists" the items are aggregated across
      * every note (active first, then completed), capped at [MAX_TASKS]; for a bound note only that
-     * note's tasks are used.
+     * note's tasks are used. [showOnlyTopLevel] drops nested tasks before counting and rendering.
      */
     private fun buildSnapshot(
         hasFolder: Boolean,
@@ -300,6 +311,7 @@ object WidgetRefresher {
         linesByUri: Map<Uri, List<String>>,
         selection: WidgetSelection,
         showCompleted: Boolean,
+        showOnlyTopLevel: Boolean,
         markers: TaskMarkers,
     ): WidgetSnapshot {
         val resolved = resolveSelectedCategory(categories, selection)
@@ -331,15 +343,18 @@ object WidgetRefresher {
         }
         val activeTasks = taskItems.filter { !it.todo.isDone }
         val completedTasks = taskItems.filter { it.todo.isDone }
+        val visibleTasks = filterTopLevelItems(activeTasks + completedTasks, showOnlyTopLevel)
+        val visibleActiveCount = visibleTasks.count { !it.todo.isDone }
         Log.d(
             TAG,
             "loadSnapshot: allLists=${resolved == null} tasks=${taskItems.size} " +
-                "active=${activeTasks.size} completed=${completedTasks.size}",
+                "active=${activeTasks.size} completed=${completedTasks.size} " +
+                "topLevelOnly=$showOnlyTopLevel visible=${visibleTasks.size}",
         )
         return WidgetSnapshot(
             hasFolder = hasFolder,
-            activeCount = activeTasks.size,
-            items = filterCompletedItems(activeTasks + completedTasks, showCompleted)
+            activeCount = visibleActiveCount,
+            items = filterCompletedItems(visibleTasks, showCompleted)
                 .take(MAX_TASKS),
             title = resolved?.displayName,
             selectedCategoryUri = resolved?.uri?.toString(),

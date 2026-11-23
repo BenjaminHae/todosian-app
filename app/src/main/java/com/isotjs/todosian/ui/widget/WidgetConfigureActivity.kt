@@ -65,9 +65,10 @@ import kotlinx.coroutines.launch
  */
 class WidgetConfigureActivity : ComponentActivity() {
 
-    // Hoisted "show completed" preference; pre-filled asynchronously from the widget state so
+    // Hoisted widget preferences; pre-filled asynchronously from the widget state so
     // reconfiguring shows the widget's current value.
     private val showCompleted = mutableStateOf(true)
+    private val showOnlyTopLevel = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,15 +103,17 @@ class WidgetConfigureActivity : ComponentActivity() {
         // Pre-fill the screen with the widget's current preferences (reconfigure case); the
         // state read is suspending, so it lands in the hoisted state asynchronously.
         lifecycleScope.launch {
-            showCompleted.value = runCatching {
+            val widgetState = runCatching {
                 val glanceId = GlanceAppWidgetManager(this@WidgetConfigureActivity)
                     .getGlanceIdBy(appWidgetId)
                 getAppWidgetState(
                     this@WidgetConfigureActivity,
                     PreferencesGlanceStateDefinition,
                     glanceId,
-                )[KEY_SHOW_COMPLETED] ?: true
-            }.getOrDefault(true)
+                )
+            }.getOrNull()
+            showCompleted.value = widgetState?.let { it[KEY_SHOW_COMPLETED] } ?: true
+            showOnlyTopLevel.value = widgetState?.let { it[KEY_SHOW_ONLY_TOP_LEVEL] } ?: false
         }
 
         val initialSettings = app.appSettingsRepository.settings
@@ -137,10 +140,30 @@ class WidgetConfigureActivity : ComponentActivity() {
                         showCompleted = showCompleted.value,
                         onShowCompletedChange = { checked ->
                             showCompleted.value = checked
-                            persistPreferences(appWidgetId, selection = null, showCompleted = checked)
+                            persistPreferences(
+                                appWidgetId = appWidgetId,
+                                selection = null,
+                                showCompleted = checked,
+                                showOnlyTopLevel = showOnlyTopLevel.value,
+                            )
+                        },
+                        showOnlyTopLevel = showOnlyTopLevel.value,
+                        onShowOnlyTopLevelChange = { checked ->
+                            showOnlyTopLevel.value = checked
+                            persistPreferences(
+                                appWidgetId = appWidgetId,
+                                selection = null,
+                                showCompleted = showCompleted.value,
+                                showOnlyTopLevel = checked,
+                            )
                         },
                         onConfirm = { selection ->
-                            persistPreferences(appWidgetId, selection, showCompleted.value)
+                            persistPreferences(
+                                appWidgetId = appWidgetId,
+                                selection = selection,
+                                showCompleted = showCompleted.value,
+                                showOnlyTopLevel = showOnlyTopLevel.value,
+                            )
                         },
                         onCancel = {
                             setResult(RESULT_CANCELED)
@@ -156,10 +179,15 @@ class WidgetConfigureActivity : ComponentActivity() {
      * Persists widget preferences and rebuilds the snapshots so changes show immediately.
      *
      * A non-null [selection] is the placement-confirming write (finishes with RESULT_OK);
-     * a null selection only persists the "show completed" toggle, leaving the activity open
+     * a null selection only persists the toggle preferences, leaving the activity open
      * and the stored selection untouched.
      */
-    private fun persistPreferences(appWidgetId: Int, selection: WidgetSelection?, showCompleted: Boolean) {
+    private fun persistPreferences(
+        appWidgetId: Int,
+        selection: WidgetSelection?,
+        showCompleted: Boolean,
+        showOnlyTopLevel: Boolean,
+    ) {
         val context = this
         lifecycleScope.launch {
             val result = runCatching {
@@ -168,6 +196,7 @@ class WidgetConfigureActivity : ComponentActivity() {
                     prefs.toMutablePreferences().apply {
                         selection?.writeTo(this)
                         this[KEY_SHOW_COMPLETED] = showCompleted
+                        this[KEY_SHOW_ONLY_TOP_LEVEL] = showOnlyTopLevel
                     }
                 }
                 // Rebuild the snapshots now so the widget shows the new preferences immediately.
@@ -194,6 +223,8 @@ private fun WidgetConfigureScreen(
     fileRepository: FileRepository?,
     showCompleted: Boolean,
     onShowCompletedChange: (Boolean) -> Unit,
+    showOnlyTopLevel: Boolean,
+    onShowOnlyTopLevelChange: (Boolean) -> Unit,
     onConfirm: (WidgetSelection) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -252,6 +283,25 @@ private fun WidgetConfigureScreen(
                             },
                             trailingContent = {
                                 Switch(checked = showCompleted, onCheckedChange = onShowCompletedChange)
+                            },
+                            colors = ListItemDefaults.colors(
+                                containerColor = Color.Transparent,
+                            ),
+                        )
+                    }
+                    item(key = TOP_LEVEL_ONLY_KEY) {
+                        ListItem(
+                            headlineContent = {
+                                Text(text = stringResource(R.string.widget_configure_top_level_only))
+                            },
+                            supportingContent = {
+                                Text(text = stringResource(R.string.widget_configure_top_level_only_hint))
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = showOnlyTopLevel,
+                                    onCheckedChange = onShowOnlyTopLevelChange,
+                                )
                             },
                             colors = ListItemDefaults.colors(
                                 containerColor = Color.Transparent,
@@ -318,3 +368,4 @@ private fun WidgetConfigureScreen(
 
 private const val ALL_LISTS_KEY = "all_lists"
 private const val SHOW_COMPLETED_KEY = "show_completed"
+private const val TOP_LEVEL_ONLY_KEY = "top_level_only"
